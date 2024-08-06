@@ -1,7 +1,9 @@
 from library.versioncontrolsystem import versionControlSystem
+from library.storage import var, PostgreSQL
 from library.userman import userman
-from library.storage import var
+from library.webui import webgui
 import quart_cors
+import datetime
 import uvicorn
 import quart
 import os
@@ -23,11 +25,30 @@ class QuartAPI:
             port=var.get('api.port'),
         )
 
-@app.route('/')
+@app.route('/api')
 async def index():
     return 'raindrop', 200
+@app.route('/api/raindrop-status')
+async def status():
+    token = quart.request.args.get('token', None)
+    user_restricted = userman(token=token).is_restricted()
 
-@app.route('/data/fetch_commits', methods=['POST', 'GET'])
+    return {
+        "Components": {
+            'database': PostgreSQL.check_db_container() if not user_restricted else -1,
+            'webui': {
+                'running': webgui.is_running() if not user_restricted else -1,
+                'restricted': False,
+            },
+            'api': {
+                "running": True,
+                "restricted": user_restricted,
+            }
+        },
+        "time": datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    }, 200
+
+@app.route('/vcs/commits_chart', methods=['POST', 'GET'])
 async def commits_data():
     if quart.request.method == 'POST':
         data = await quart.request.get_json()

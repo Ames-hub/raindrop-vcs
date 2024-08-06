@@ -101,5 +101,3 @@ class SamplePlugin:
     def help(self):
         print("This is the help message for SamplePlugin.")
 ```
-
-This guide should help you create and integrate plugins into your CLI effectively. Happy coding!

@@ -45,6 +45,8 @@ class cli_handler:
         :param greet_func: The function to call to greet the user each loop through the CLI. eg, "Welcome to the CLI."
         :param use_default_cmds: If True, uses the default commands. eg, help, exit, cls.
         :param use_plugins: If True, uses the plugins in the plugins directory.
+        :param plugins_dir: The directory to look for plugins in.
+        :param is_main_cli: If True, this is the main CLI. If False, this is a sub-CLI.
         """
         self.greet_func = greet_func
         self.cli_name = cli_name
@@ -89,6 +91,13 @@ class cli_handler:
             if use_plugins:
                 os.makedirs(self.plugins_dir, exist_ok=True)
                 self.load_plugins_from(self.plugins_dir)
+        else:
+            # Why I have made it even possible to disable this, I have no idea. It shouldn't be possible.
+            logging.warning(
+                "Default commands are disabled.\n"
+                "You must register your own commands, including exit.\n"
+                "This has not been tested in the slightest because I am sane enough to not disable this.\n"
+            )
 
         # Looks in the args of each command to see how many args it can take. Counts the max.
         max_args_possible = 0

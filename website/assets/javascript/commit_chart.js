@@ -8,9 +8,9 @@ function update_chart(username) {
 
     const currentHost = window.location.hostname;
     const currentProtocol = window.location.protocol;
-    const api_url = `${currentProtocol}//${currentHost}:4096`;
+    const web_url = `${currentProtocol}//${currentHost}:2048`;
 
-    fetch(`${api_url}/data/fetch_commits`, {
+    fetch(`${web_url}/vcs/commits_chart`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'

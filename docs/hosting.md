@@ -53,10 +53,19 @@ If you are running without docker, Please install it as per docker's instruction
 Other than that, Most processes are either automatic or too simple to bother describing here.<br>
 If you have any issues, please open an issue on the GitHub repository.
 
-## Manually editing settings
-If you need to manually edit settings, you can do so by editing the `settings.json` file in root dir.
+For any slightly complex or subjects that need explanation, please refer to the other documents in the docs folder.
 
-## Updating Raindrop
+## Making it global
+If you want to make Raindrop globally accessible<br>you will need to port forward port 2048 to your server that runs
+both the API and Raindrop.<br>Most routers support this, and if they do not, you can use a service such as<br>Tailscale
+(recommended), Ngrok, or Hamachi.
+
+## Manually editing settings
+If you need to manually edit settings, you can do so by editing the `settings.json` file in root dir.<br>
+NOTE: NEVER SHARE THE SETTINGS.JSON FILE! It contains sensitive information.
+In the future, this information will be encrypted using cryptography. But for now, it is plaintext.
+
+## Updating Raindrop (unimplemented)
 Raindrop automatically alerts you when an update is available.<br>
 To update, in the Raindrop CLI, simply enter `raindrop` then `update`<br><br>
 You can set this to automatically run.

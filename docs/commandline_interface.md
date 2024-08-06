@@ -1,160 +1,136 @@
-## `cli_handler` Class Documentation
+<h1 align="center">CLI Handler Class Documentation</h1>
 
-The `cli_handler` class is a command-line interface (CLI) manager designed to handle commands, manage plugins, and provide user interaction. The class includes functionality to handle both default and custom commands, load and execute plugins, and manage user input.
+The `cli_handler` class is a command-line interface (CLI) manager designed to handle commands, manage plugins,
+and provide user interaction. The class includes functionality to handle both default and custom commands, load and
+execute plugins, and manage user input.
 
-### Imports
+*Note: All inputs and command names are case-insensitive (made lower-case).*
 
-- **`from difflib import get_close_matches`**: Used for finding commands that are similar to a mistyped command.
-- **`from library.pylog import pylog`**: Custom logging utility.
-- **`import importlib.util`**: Used for dynamic module importing.
-- **`import platform`**: Provides information about the operating system and Python version.
-- **`import dotenv`**: Used to load environment variables from a `.env` file.
-- **`import os`**: Provides functionality for interacting with the operating system.
+# Class Arguments
+The class contains a couple of arguments for customization. The arguments are as follows:
+- `self` - The class instance. (REQUIRED FOR MOST IF NOT ALL FUNCTIONALITY)
+- `cli_name` - The name of the CLI. This will appear in the terminal like<br>
+  ```
+  Welcome to [cli_name] CLI! Type 'help' for a list of commands.
+  CLI_NAME_HERE>
+  ```
+- greet_func - A function to run when the CLI is started. This function should not take any arguments.<br>
+  It should only print a welcome message or something similar. Eg:
+  ```python
+  def greet():
+      is_running = True  # You can check if the server is running here
+      print("Welcome to the CLI!")
+      print(f"Currently, your server is {'running!' if is_running else 'stopped'}.")
+      return True
+  ```
+- `use_default_cmds` - A boolean value that determines whether to auto-register the default commands<br>
+  like 'exit' or 'help' or not. Default is `True`. (not recommended to change to false)
+- `use_plugins` - A boolean value that toggles if plugins are allowed to be loaded into the CLI.
+   Defaults to False. See `docs/plugins.md` for more information on plugins.
+- `plugin_dir` - The directory where the plugins are stored. Defaults to `./plugins/`.
+- `is_main_cli` - A boolean value that determines if the CLI is the main CLI or not. Defaults to `True`.<br>
+   Only thing it really changes is whether or not it simply sets
+   its `self.running` to False or if it raises a KeyboardInterrupt.
+  (Only the main CLI raises keyboard interrupt)
 
-### Initialization
+# Class Functions
+### `exit`
+Exits the CLI.
+- **Parameters:** None
+- **Returns:** None
+- **Raises:** 
+- `KeyboardInterrupt` if it is the main CLI.
+- Sets `self.running` to `False` otherwise.
 
-#### `__init__(self, cli_name: str, greet_func=None, use_default_cmds=True, use_plugins=False, plugins_dir='plugins', is_main_cli=False)`
+### `clear_terminal`
+Clears the terminal screen.
+- **Parameters:** None
+- **Returns:** `True`
 
+### `load_plugin`
+Loads a single plugin from a directory.
 - **Parameters:**
-  - `cli_name` (str): Name of the CLI instance.
-  - `greet_func` (Optional function): Function to greet the user on each CLI loop.
-  - `use_default_cmds` (bool): Whether to use default commands (`help`, `exit`, `cls`, `clear`).
-  - `use_plugins` (bool): Whether to enable plugin support.
-  - `plugins_dir` (str): Directory where plugins are located.
-  - `is_main_cli` (bool): Indicates if this CLI instance is the main CLI or a sub-CLI.
+  - `plugin_file_dir` - The directory of the plugin.
+  - `class_name` - The name of the class to load.
+- **Returns:** `True` if the plugin is loaded successfully, `False` otherwise.
+- **Raises:**
+  - `ImportError` - If the plugin cannot be imported.
+  - `AttributeError` - If the plugin class does not have callable `main` and `help` methods.
+  - `ValueError` - If the plugin name contains spaces.
+  - `FileNotFoundError` - If the plugin file is not found.
 
-- **Description:**
-  Initializes the CLI handler, sets up default commands if specified, and loads plugins if required. Also initializes internal data structures for command registration and plugin management.
-
-### Methods
-
-#### `exit(self)`
-
-- **Description:**
-  Exits the CLI. Raises a `KeyboardInterrupt` if this is the main CLI; otherwise, sets the `running` flag to `False` to stop the CLI loop.
-
-#### `clear_terminal(self)`
-
-- **Description:**
-  Clears the terminal screen using the appropriate command for the operating system (`cls` for Windows, `clear` for Unix-based systems).
-
-#### `load_plugin(self, plugin_file_dir: str, class_name: str) -> bool`
-
+### `load_plugins_from`
+Loads all plugins from a specified directory.
 - **Parameters:**
-  - `plugin_file_dir` (str): Path to the plugin file.
-  - `class_name` (str): Name of the class to load from the plugin file.
+  - `plugin_dir` - The directory of the plugins.
+- **Returns:** `True`
+- **Raises:**
+  - `AssertionError` - If the plugin directory does not exist.
 
-- **Description:**
-  Loads a plugin from a specified directory. The plugin class must have `main` and `help` methods. Registers the plugin commands and help function if loading is successful.
-
-#### `load_plugins_from(self, plugin_dir: str) -> bool`
-
+### `register_plugin_help_func`
+Registers a help function for a plugin.
 - **Parameters:**
-  - `plugin_dir` (str): Directory containing the plugins.
+  - `plugin_name` - The name of the plugin.
+  - `help_func` - The help function to register.
+- **Returns:** `True`
 
-- **Description:**
-  Loads all plugins from the specified directory. Each plugin should be in its own subdirectory.
-
-#### `register_plugin_help_func(self, plugin_name: str, help_func) -> bool`
-
+### `find_similar`
+Finds commands and arguments similar to those entered by the user.
 - **Parameters:**
-  - `plugin_name` (str): Name of the plugin.
-  - `help_func`: Function that provides help for the plugin.
+  - `cmd` - The command to find similar commands to.
+  - `cmd_args` - The arguments of the command.
+  - `ask_to_execute` - If `True`, asks the user if they want to execute the similar command.
+- **Returns:** 
+  - A dictionary with the similar command and arguments if found.
+  - `None` if no similar command is found or the user does not want to execute it.
 
-- **Description:**
-  Registers a help function for a plugin, allowing the `help` command to provide information about the plugin.
-
-#### `find_similar(self, cmd: str, cmd_args: list, ask_to_execute=False) -> dict | None`
-
+### `ask_question`
+Asks the user a question and returns the answer.
 - **Parameters:**
-  - `cmd` (str): Command to find similar commands for.
-  - `cmd_args` (list): Arguments for the command.
-  - `ask_to_execute` (bool): Whether to ask the user if they want to execute the similar command.
+  - `question` - The question to ask.
+  - `options` - A list of acceptable answers.
+  - `exit_phrase` - The phrase to type to exit the question.
+  - `confirm_validity` - If `True`, ensures the answer is in the options list.
+  - `ask_if_valid` - If `True`, asks the user if the answer is correct.
+  - `default` - The default answer if the user enters nothing.
+  - `show_default` - If `True`, shows the default answer in the prompt.
+  - `filter_func` - A function to filter the answer.
+  - `colour` - The color of the prompt.
+  - `allow_default` - If `True`, allows the default answer to be returned.
+  - `show_options` - If `True`, shows the options list.
+  - `exit_notif_msg` - The message indicating how to exit questioning.
+  - `clear_terminal` - If `True`, clears the terminal before asking the question.
+- **Returns:** The answer to the question.
+  - **Raises:** `exited_question` if the user exits the question.
 
-- **Description:**
-  Finds commands similar to a mistyped command. If `ask_to_execute` is `True`, prompts the user to confirm if they want to execute the similar command.
+### `exited_question`
+Custom exception raised when the user exits a question.
 
-#### `ask_question(self, question: str, options: list = None, exit_phrase='exit', confirm_validity=True, show_default=True, default=None, filter_func=None, colour='green', do_listing: bool = False, allow_default: bool = True, show_options: bool = True) -> str | list`
-
+### `list_commands`
+Lists all commands that the user can use in the CLI.
 - **Parameters:**
-  - `question` (str): The question to ask the user.
-  - `options` (list, Optional): List of valid options for the response.
-  - `exit_phrase` (str): Phrase to exit the question loop.
-  - `confirm_validity` (bool): Whether to confirm the validity of the response.
-  - `show_default` (bool): Whether to show the default response option.
-  - `default` (Optional): Default response if no valid input is given.
-  - `filter_func` (Optional function): Function to validate the response.
-  - `colour` (str): Colour for the response prompt.
-  - `do_listing` (bool): Whether to allow multiple responses.
-  - `allow_default` (bool): Whether to allow default value.
-  - `show_options` (bool): Whether to show options for the response.
+  - `return_only` - If `True`, returns the dictionary of commands instead of printing them.
+- **Returns:** The dictionary of commands if `return_only` is `True`, `True` otherwise.
 
-- **Description:**
-  Asks a question to the user, with options for validation, default values, and multiple responses if `do_listing` is `True`.
-
-#### `list_commands(self, return_only=False)`
-
+### `help_cmd`
+Displays help information for all commands or a specific plugin.
 - **Parameters:**
-  - `return_only` (bool): Whether to return the dictionary of commands only.
+  - `args` - The arguments for the help command.
+- **Returns:** `True`
 
-- **Description:**
-  Lists all registered commands or returns a dictionary of commands based on the `return_only` flag.
-
-#### `help_cmd(self, args=None)`
-
+### `register_command`
+Registers a new command with its corresponding function.
 - **Parameters:**
-  - `args` (Optional list): Arguments for the help command.
+  - `cmd` - The command to register.
+  - `func` - The function to execute when the command is called (by cmd being entered into CLI.)
+  - `description` - The description of the command.
+  - `args` - A list of potential arguments for the command that the user can pass in.
+     eg, "Open_Port" command could have "2048" as an argument.
+  - `func_args` - The arguments that the function takes invariably. Eg, True passed as the first argument corresponding
+     with "Is_from_cli" kwarg.
+- **Returns:** `True`
 
-- **Description:**
-  Provides help information. If arguments are provided, shows help for a specific plugin; otherwise, lists all available commands.
-
-#### `register_command(self, cmd, func, description='', args=[], func_args=None) -> bool`
-
-- **Parameters:**
-  - `cmd` (str): Command to register.
-  - `func`: Function to execute when the command is called.
-  - `description` (str): Description of the command.
-  - `args` (list): List of potential arguments for the command.
-  - `func_args` (Optional list): Arguments that the function takes.
-
-- **Description:**
-  Registers a command with its associated function and description. Also manages command arguments and whether the function requires arguments.
-
-#### `main(self)`
-
-- **Description:**
-  Main loop for handling user input. Processes commands, manages execution, and handles errors. Also provides debugging information if enabled.
-
-### Flow of Events
-
-1. **Initialization:**
-   - The `cli_handler` is initialized with parameters such as CLI name, greeting function, command settings, and plugin options.
-   - Default commands are registered if specified.
-   - Plugins are loaded if the `use_plugins` flag is set.
-
-2. **Main Loop:**
-   - The `main()` method starts a loop to handle user input.
-   - Prompts the user for input and parses the command and arguments.
-   - Executes the registered command or handles errors if the command is not found.
-   - If an invalid command is entered, tries to find a similar command and prompts the user to confirm execution.
-
-3. **Command Handling:**
-   - Commands are executed based on their registration.
-   - If a command requires arguments, they are processed and passed to the function.
-   - If the command is not found, attempts to find a similar command.
-
-4. **Plugin Management:**
-   - Plugins are loaded from specified directories and registered with the CLI.
-   - Each plugin must have a `main` method for execution and a `help` method for providing help.
-
-5. **User Interaction:**
-   - The CLI handles user questions and options through methods like `ask_question()`.
-   - Provides help and command listing features to assist users.
-
-6. **Exit Handling:**
-   - The CLI can be exited using the `exit` command or by raising a `KeyboardInterrupt`.
-   - If in sub-CLI mode, it returns to the main CLI instead of exiting.
-
----
-
-This documentation should provide a clear understanding of the `cli_handler` class and its functionality. Let me know if you need any more details or explanations!
+### `main`
+Handles the command line interface. This is the main loop of the CLI.
+- **Parameters:** None
+- **Returns:** None

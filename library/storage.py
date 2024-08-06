@@ -48,7 +48,8 @@ class dt:
     USER_CONFIG = {
         'username': None,
         'password': None,
-        'bio': None
+        'bio': None,
+        'restricted': False,  # Whether the user is restricted from accessing Raindrop and the API
     }
 
 class var:

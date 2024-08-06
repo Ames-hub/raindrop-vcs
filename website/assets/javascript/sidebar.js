@@ -61,7 +61,7 @@ function keepAliveCheck () {
 
     const currentHost = window.location.hostname;
     const currentProtocol = window.location.protocol;
-    const api_url = `${currentProtocol}//${currentHost}:4096`;
+    const api_url = `${currentProtocol}//${currentHost}:2048/api/status`;
 
     fetch(api_url)
         .then(response => response.text())
