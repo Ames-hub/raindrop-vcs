@@ -1,0 +1,13 @@
+/* Without the 'redundant' unit, The element sticks far to the right. */
+/*noinspection CssRedundantUnit*/
+#sidebar_right {
+    position: absolute;
+    top: 0px;
+    right: 0px;
+    width: 180px;
+    height: 100%;
+    z-index: 1;
+    background-color: #272727;
+    color: #e2e2e2;
+    border-left: 1px solid #ffffff;
+}

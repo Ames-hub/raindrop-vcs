@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Raindrop Hub</title>
+    <link rel="icon" href="assets/img/icon.png">
+    <link rel="stylesheet" href="assets/css/repositories.css">
+    <link rel="stylesheet" href="assets/css/container.css">
+    <link rel="stylesheet" href="assets/css/left_sidebar.css">
+    <link rel="stylesheet" href="assets/css/right_sidebar.css">
+</head>
+<body>
+<div id="sidebar_left">
+    <script src="assets/javascript/goto_location.js"></script>
+    <img src="assets/img/icon.png" alt="logo" id="team_logo">
+    <h1 id="panel_title">Interaction panel</h1>
+    <div id="status_detector">
+        <span id="status_text">Pending</span>
+    </div>
+    <hr>
+    <nav id="nav">
+        <!-- Makes all the tabs per <a> tag -->
+        <a id="nav_profile" href="javascript:goto_profile_href()" class="nav-link">Profile</a>
+        <a id="nav_index" href="javascript:goto_index_href()" class="nav-link">Hub</a>
+        <a id="nav_repos" href="javascript:goto_repositories_href()" class="nav-link">Repositories</a>
+        <a id="nav_versioning" href="index.html" class="nav-link">Versioning</a>
+        <a id="nav_usermanage" href="userman.html" class="nav-link">Manage</a>
+        <script src="assets/javascript/sidebar.js"></script>
+    </nav>
+</div>
+<div id="container">
+    <div id="repos_list">
+        <div id="no-repos">
+            <h1 id="no-repos-title">No repositories found</h1>
+            <p id="no-repos-msg">You have no repositories yet. Create one by clicking the button below.</p>
+            <button id="make_first_repo_btn">Create repository</button>
+        </div>
+        <div id="repo_list">
+            <a class="repo" href="view/Amelia/Repository-1">
+                <h1 class="repo_title">Repository-1</h1>
+                <div class="desc_container">
+                    <p class="repo_desc">Repository description</p>
+                </div>
+            </a>
+        </div>
+    </div>
+</div>
+<div id="sidebar_right">
+</div>
+<script src="assets/javascript/list_repos.js"></script>
+</body>
+</html>

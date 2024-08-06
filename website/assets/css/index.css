@@ -1,0 +1,49 @@
+#commits_chart_box {
+    position: relative;
+    background-color: #272222;
+}
+
+#loading_spinner {
+    position: absolute;
+    text-align: center;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+}
+
+#commit_chart {
+    position: relative;
+    max-height: 250px;
+    width: 100%;
+}
+
+#recent_commits {
+    position: relative;
+    top: 70px;
+    width: 25vw;
+    min-height: 60%;
+    padding: 5px;
+    border-radius: 10px;
+    background-color: #3e3e3e;
+    overflow-y: auto;
+}
+.commit {
+    position: relative;
+    left: 5px;
+    width: 80%;
+    min-height: fit-content;
+    background-color: gray;
+    color: white;
+    border-radius: 5px;
+}
+.commit_img {
+    position: relative;
+    background-color: black;
+    width: 70px;
+    height: 70px;
+    float: right;
+    bottom: 85px;
+    left: 35px;
+    border-radius: 50%;
+}

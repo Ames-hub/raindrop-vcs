@@ -1,0 +1,22 @@
+body {
+    background-color: #272727;
+}
+
+#container {
+    position: relative;
+    border: red 1px solid;
+    width: 69dvw;
+    height: 98dvh;
+    left: 28px;
+    z-index: 2;
+}
+
+@media screen and (min-width: 1920px) {
+    #container {
+        position: relative;
+        width: 79.2dvw;
+        height: 98dvh;
+        left: 28px;
+        z-index: 2;
+    }
+}

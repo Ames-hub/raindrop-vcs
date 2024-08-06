@@ -1,0 +1,98 @@
+/* In its own CSS file as sidebar is on all pages */
+body {
+    margin-left: 180px; /* Adjust this value based on your sidebar width */
+    transition: margin-left 0.5s; /* Optional: Add a smooth transition effect */
+}
+
+/* Without the 'redundant' unit, The element sticks far to the right. */
+/*noinspection CssRedundantUnit*/
+#sidebar_left {
+    position: absolute;
+    top: 0px;
+    left: 0px;
+    width: 200px;
+    height: 100%;
+    background-color: #272727;
+    color: #e2e2e2;
+    border-right: 1px solid #ffffff;
+    overflow: auto;
+}
+
+/* Without the 'redundant' unit, The element sticks far to the right. */
+/*noinspection CssRedundantUnit*/
+#shrinked-sidebar {
+    position: absolute;
+    top: 0px;
+    left: 0px;
+    width: 80px;
+    height: 100%;
+    background-color: #272727;
+    color: #e2e2e2;
+    border-right: 1px solid #ffffff;
+    overflow: auto;
+}
+
+#team_logo {
+    position: relative;
+    top: 10px;
+    width: 150px;
+    height: 150px;
+    /* Center the image */
+    margin-left: auto;
+    margin-right: auto;
+    display: block; /* Ensure it's a block-level element for centering to work. IF anyone removes this code, off with your head!!! */
+}
+
+#panel_title {
+    text-align: center;
+    font-size: large;
+    padding: 5px;
+}
+#nav {
+    display: block; /* Make each nav link a block-level element */
+    margin-top: 10px; /* Add some space between the links */
+}
+.nav-link {
+    display: block;
+    text-align: center; 
+    height: 60px;
+    background-color: #272727;
+    border-bottom: 1px solid #ffffff;
+    color: #e2e2e2;
+    /* Moves the text to the middle left */
+    line-height: 60px;
+    padding-left: 50px;
+    font-size: 20px;
+
+    background-repeat: no-repeat;
+    background-position: 10px center;
+}
+#status_detector {
+    /* Centres text */
+    position: relative;
+    left: 50%;
+    transform: translate(-50%, 0);
+
+    text-align: center;
+    background-color: gray; /*Gray by default, js changes it*/
+    max-width: fit-content;
+    padding-left: 5px;
+    padding-right: 5px;
+    border-radius: 20px;
+    margin-bottom: 15px;
+}
+#nav_profile {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='white' class='size-6'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z' /%3E%3C/svg%3E");
+}
+#nav_index {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='white' class='w-6 h-6'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z' /%3E%3C/svg%3E");
+}
+#nav_repos {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='white' class='w-6 h-6'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M6.429 9.75L2.25 12l4.179 2.25m0-4.5l5.571 3 5.571-3m-11.142 0L2.25 7.5 12 2.25l9.75 5.25-4.179 2.25m0 0L21.75 12l-4.179 2.25m0 0l4.179 2.25L12 21.75 2.25 16.5l4.179-2.25m11.142 0l-5.571 3-5.571-3' /%3E%3C/svg%3E");
+}
+#nav_versioning {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='-2.4 -2.4 28.80 28.80' xmlns='http://www.w3.org/2000/svg' fill='%23ffffff' stroke='%23ffffff' transform='matrix(1, 0, 0, 1, 0, 0)rotate(0)'%3E%3Cg id='SVGRepo_bgCarrier' stroke-width='0'%3E%3C/g%3E%3Cg id='SVGRepo_tracerCarrier' stroke-linecap='round' stroke-linejoin='round' stroke='%23ff0000' stroke-width='0.048' %3E%3C/g%3E%3Cg id='SVGRepo_iconCarrier'%3E%3Cpath d='M21.007 8.222A3.738 3.738 0 0 0 15.045 5.2a3.737 3.737 0 0 0 1.156 6.583 2.988 2.988 0 0 1-2.668 1.67h-2.99a4.456 4.456 0 0 0-2.989 1.165V7.4a3.737 3.737 0 1 0-1.494 0v9.117a3.776 3.776 0 1 0 1.816.099 2.99 2.99 0 0 1 2.668-1.667h2.99a4.484 4.484 0 0 0 4.223-3.039 3.736 3.736 0 0 0 3.25-3.687zM4.565 3.738a2.242 2.242 0 1 1 4.484 0 2.242 2.242 0 0 1-4.484 0zm4.484 16.441a2.242 2.242 0 1 1-4.484 0 2.242 2.242 0 0 1 4.484 0zm8.221-9.715a2.242 2.242 0 1 1 0-4.485 2.242 2.242 0 0 1 0 4.485z'%3E%3C/path%3E%3C/g%3E%3C/svg%3E");
+}
+#nav_usermanage {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='white' class='size-6'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z' /%3E%3C/svg%3E");
+}

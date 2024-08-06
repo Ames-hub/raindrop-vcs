@@ -1,0 +1,74 @@
+* {
+    transition: 280ms;
+}
+
+#repo_list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    margin-top: 20px;
+}
+
+.repo {
+    position: relative;
+    width: 97%;
+    height: 80px;
+    /* Makes a linear gradient from #323232 to #3a3a3a */
+    background: linear-gradient(90deg, #323232, #424242);
+    border: 2px solid #3a3a3a;
+    border-radius: 20px;
+    padding: 5px;
+    color: white;
+    font-family: Arial, sans-serif;
+    margin-bottom: 10px;
+    box-shadow: 5px -5px 0px 0px #1c1c1c;
+}
+.repo_title {
+    position: relative;
+    text-align: left;
+    top: -20px;
+    left: 5px;
+}
+.desc_container {
+    position: relative;
+    max-width: 50%;
+    top: -45px;
+    left: 5px;
+}
+.repo_desc {
+    position: relative;
+    text-align: left;
+    font-size: 18px;
+    padding: 5px;
+}
+
+/* On hovering over a repo, make it brighten up */
+.repo:hover {
+    background: #3a3a3a;
+    padding: 10px;
+}
+
+#no-repos {
+    width: 100%;
+    color: white;
+    display: none;
+}
+
+#no-repos-title, #no-repos-msg {
+    text-align: center;
+    font-family: Arial, sans-serif;
+}
+
+#make_first_repo_btn {
+    position: relative;
+    background-color: #3e3e3e;
+    color: white;
+    border: 2px solid #272727;
+    border-radius: 20px;
+    padding: 10px;
+    font-family: Arial, sans-serif;
+    margin-top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    cursor: pointer;
+}

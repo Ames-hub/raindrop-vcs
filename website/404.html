@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>The 404 Hope Poem</title>
+</head>
+<body>
+<p>
+    <!--
+    Behold, a 404 page that I had too much (bs) fun making lol.
+    -->
+    <div id="poem">
+        <noscript>
+            We noticed JavaScript is disabled. This may interfere with returning you to the home page<br>
+            and the poems' functionality. Please enable JavaScript to experience the full functionality.
+        </noscript>
+        <h1>404 Not Found</h1>
+        <!--
+        Poem, two versions of the same story
+        Dark text is revealed first, then bright text is revealed if they revisit the page within 30 seconds
+        -->
+        <div class="dark_text">A Raindrop fell on empty ground,<br></div>
+        <div class="bright_text">A Raindrop fell exactly where it needed to be,<br></div>
+        <div class="dark_text">Yet an effort, a hope, I was given.<br><br></div>
+        <div class="bright_text">A true request, I was asked to undertake.<br><br></div>
+        <div class="dark_text">"Look again!" She told me.<br></div>
+        <div class="bright_text">"You've Looked!" She asserts to my nod.<br></div>
+        <div class="dark_text">A Message, I could not see,<br></div>
+        <div class="bright_text">A Request, I could finally see, that had not arrived,<br></div>
+        <div class="dark_text">And a Hope, I may never fulfill.<br><br><br></div>
+        <div class="bright_text">A Hope, I had strived to fulfill.<br><br><br></div>
+        404, No trace, No place.<br>
+        <div class="dark_text"><a class="return" onclick="redirectToHome()">Return Home.</a></div>
+        <div class="bright_text"><a class="return" onclick="redirectToHome()">Return Home.</a></div>
+        <div id="extra_text">
+            <!-- Extra text to be revealed -->
+            <br><br>
+            You are loved.<br>
+            There is always a clear sky before the clouds.<br>
+        </div>
+    </div>
+    <br><br><br><br><br><br><br><br><br>
+<p id="cover_text">
+</p>
+<style>
+    body {
+        background-color: #3e3e3e;
+        overflow-y: hidden;
+    }
+    /*
+    Places the wall of 'Give up' at the very top of the screen,
+    and hides it entirely until you highlight with cursor.
+    */
+    #cover_text {
+        position: absolute;
+        top: -20px;
+        color: #3e3e3e;
+        cursor: default;
+    }
+    #extra_text {
+        display: none;
+        font-style: italic;
+    }
+    .dark_text {
+        display: block;
+    }
+    .bright_text {
+        display: none;
+    }
+    #poem {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+        color: white;
+        z-index: 2;
+    }
+    .return {
+        color: cyan;
+    }
+    .return:hover {
+        cursor: pointer;
+    }
+</style>
+<script>
+    // Function to save the current timestamp to localStorage
+    function saveTimestamp() {
+        const currentTimestamp = new Date().toISOString();
+        localStorage.setItem('redirectTimestamp', currentTimestamp);
+    }
+
+    // Function to retrieve the saved timestamp from localStorage
+    function getTimestamp() {
+        return localStorage.getItem('redirectTimestamp');
+    }
+
+    // Modified redirectToHome function to save the timestamp before redirecting
+    function redirectToHome() {
+        saveTimestamp();
+        window.location.href = '/index.html';
+    }
+
+    if (getTimestamp() !== null) {
+        const lastTimestamp = new Date(getTimestamp());
+        const currentTimestamp = new Date();
+        const timeDifference = currentTimestamp - lastTimestamp;
+        if (timeDifference < 30000) {
+            // If the time difference is less than 30 seconds, reveal the text
+            document.getElementById('extra_text').style.display = 'block';
+            // Writes 'There is Hope' to the div with id 'cover_text' 5000 times
+            document.getElementById('cover_text').innerText = "THERE IS HOPE. DON'T LET THEM WIN! ".repeat(5000);
+            let bright_text = document.getElementsByClassName('bright_text')
+            let dark_text = document.getElementsByClassName('dark_text')
+            for (let i = 0; i < bright_text.length; i++) {
+                bright_text[i].style.display = 'block';
+            }
+            for (let i = 0; i < dark_text.length; i++) {
+                dark_text[i].style.display = 'none';
+            }
+            // Changes the pages title from "The 404 Hope Poem" to "The 200 Hope Poem"
+            document.title = "The 202 Hope Poem";
+        }
+        else {
+            // Writes 'Give Up' to the div with id 'cover_text' 10,000 times
+            document.getElementById('cover_text').innerText = 'GIVE UP '.repeat(4000);
+        }
+    } else {
+        // Writes 'Give Up' to the div with id 'cover_text' 10,000 times
+        document.getElementById('cover_text').innerText = 'GIVE UP '.repeat(4000);
+    }
+
+    // setInterval(redirectToHome, 10000) // Redirects to home page after 10 seconds
+</script>
+</body>
+</html>
