@@ -2,23 +2,26 @@ from library.storage import var, PostgreSQL, postgre_cli
 from library.cmd_interface import cli_handler, colours
 from library.quartapi import QuartAPI
 from library.webui import webgui
-from library.pylog import pylog
 import multiprocessing
+import datetime
+import logging
 import dotenv
 import time
 import os
 
 dotenv.load_dotenv('secrets.env')
-logging = pylog(use_latestlog=True,)
-
-if __name__ == '__main__':
-    logging.start_logging()
 
 cli = cli_handler(
     'Raindrop',
     is_main_cli=True,
     use_default_cmds=True,
     use_plugins=True
+)
+
+logging.basicConfig(
+    filename=f'logs/{datetime.datetime.now().strftime("%Y-%m-%d")}.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(filename)s - %(funcName)s - line %(lineno)d - %(message)s'
 )
 
 class raindrop:
@@ -43,6 +46,17 @@ class raindrop:
             description='Manage the WebUI container'
         )
 
+        # Checks if the API is Actually running
+        while True:
+            try:
+                time.sleep(1)
+                if API_Process.is_alive():
+                    break
+            except KeyboardInterrupt:
+                print(f"{colours['red']}Exiting Raindrop.")
+                exit(1)
+
+        PostgreSQL().modernize()
         cli.main()
 
     @staticmethod
@@ -71,11 +85,15 @@ class raindrop:
     def setup():
         print(f"{colours['green']}Welcome to Raindrop!{colours['white']}")
         print("Since this is your first time running Raindrop VCS Server, we need to set up a few things.\n")
-        advanced_mode = cli.ask_question(
-            "Do you want to the advanced setup mode? (y/n)",
-            options=['y', 'n'],
-            default='n', show_options=False
-        ) == 'y'
+        try:
+            advanced_mode = cli.ask_question(
+                "Do you want to the advanced setup mode? (y/n)",
+                options=['y', 'n'],
+                default='n', show_options=False
+            ) == 'y'
+        except cli.exited_questioning:
+            print("Exiting setup.")
+            exit(0)
 
         try:
             while raindrop.docker_test(True) != 0:
@@ -142,9 +160,10 @@ class raindrop:
                 if hostname in ['localhost', '127.0.0.1']:
                     use_lanloopback = cli.ask_question(
                         f"{colours['yellow']}Warning: Using 'localhost' or '127.0.0.1' as the hostname"
-                        f" will make the API only accessible from the local machine.",
+                        f" will make the API only usable/accessible from the local machine.",
                         options=['ok', 'cancel'],
-                        default='ok'
+                        default='ok',
+                        exit_notif_msg=""
                     )
                     if use_lanloopback == 'cancel':
                         print("Let's try that again.")

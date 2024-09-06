@@ -10,6 +10,23 @@
     <link rel="stylesheet" href="assets/css/right_sidebar.css">
 </head>
 <body>
+    <div id="create_repo_form_container" style="display: none;"> <!-- Hidden by default -->
+        <h1 id="create_repo_title">Create a new repository</h1>
+        <form id="create_repo_form">
+            <label for="repo_name_input" style="color: white;">Repository name:</label>
+            <input type="text" id="repo_name_input" name="repo_name" required>
+    
+            <label for="repo_desc_input" style="color: white;">Short description:</label>
+            <input type="text" id="repo_desc_input" name="repo_desc" required>
+    
+            <button id="create_repo_btn">Create repository</button>
+            <select id="repo_priv_input" name="repo_priv_input" required>
+                <option value="private">Private</option>
+                <option value="public">Public</option>
+            </select>
+    
+        </form>
+    </div>
 <div id="sidebar_left">
     <script src="assets/javascript/goto_location.js"></script>
     <img src="assets/img/icon.png" alt="logo" id="team_logo">
@@ -36,17 +53,13 @@
             <button id="make_first_repo_btn">Create repository</button>
         </div>
         <div id="repo_list">
-            <a class="repo" href="view/Amelia/Repository-1">
-                <h1 class="repo_title">Repository-1</h1>
-                <div class="desc_container">
-                    <p class="repo_desc">Repository description</p>
-                </div>
-            </a>
         </div>
     </div>
 </div>
 <div id="sidebar_right">
 </div>
+<script src="assets/javascript/repositories.js"></script>
 <script src="assets/javascript/list_repos.js"></script>
+<script src="assets/javascript/AutoLoginManager.js"></script>
 </body>
 </html>

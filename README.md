@@ -25,6 +25,9 @@ Raindrop has the following features: <br>
 **Implemented**
 - [x] Plugin Support
 - [x] Docker Integration
+- [x] Built-in WebUI
+- [x] Built-in API
+- [x] Optional Built-in Database
 
 **Unimplemented**
 - [ ] Pushing code

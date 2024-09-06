@@ -31,19 +31,9 @@
 .commit {
     position: relative;
     left: 5px;
-    width: 80%;
+    width: 95%;
     min-height: fit-content;
     background-color: gray;
     color: white;
     border-radius: 5px;
-}
-.commit_img {
-    position: relative;
-    background-color: black;
-    width: 70px;
-    height: 70px;
-    float: right;
-    bottom: 85px;
-    left: 35px;
-    border-radius: 50%;
 }

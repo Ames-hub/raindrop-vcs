@@ -1,4 +1,4 @@
-from library.storage import var, PostgreSQL
+from library.storage import var, PostgreSQL, dt
 from library.errors import error
 import secrets
 import os
@@ -10,7 +10,30 @@ class users:
         Registers a user
         :return:
         """
-        PostgreSQL().add_user(username, password)
+        assert type(username) == str, "Username must be a string."
+        assert type(password) == str, "Password must be a string."
+        if PostgreSQL().check_exists(username, not_exist_ok=True) is True:
+            raise error.user_already_exists
+        if not len(password) >= 4: raise error.password_too_short
+        success = PostgreSQL().add_user(username, password)
+        # Always make the first user to be created an admin. Check what their serial user ID is.
+        conn = PostgreSQL().get_connection()
+        cur = conn.cursor()
+
+        cur.execute(
+            """
+            SELECT * FROM accounts
+            WHERE user_id = 1
+            """
+        )
+
+        if cur.fetchone() is None:
+            PostgreSQL().make_user_administrator(username)
+
+        cur.close()
+        conn.close()
+
+        return success
 
     @staticmethod
     def delete(username):
@@ -26,7 +49,7 @@ class users:
         Checks if a user exists
         :return:
         """
-        return PostgreSQL().user_exists(username)
+        return PostgreSQL().check_exists(username)
 
     @staticmethod
     def get_pfp(username, dir_only=False) -> bytes | str:
@@ -86,22 +109,35 @@ class users:
         """
         return PostgreSQL().get_bio(username)
 
-class userman:
+class user_login:
     def __init__(self, username:str=None, password=None, token=None):
         """
-        A class to manage users. Enter None type as password to enter restricted viewing mode.
+        A class to login to a user
         :param username:
         :param password:
         """
-        self.username = username
+        if not username is None:
+            self.username = username
 
-        exists = PostgreSQL().user_exists(username)
-        if not exists:
-            raise error.user_nonexistant
+            exists = PostgreSQL().check_exists(username)
+            if not exists:
+                raise error.user_nonexistant
 
         self.password = password
-        self.token = token
-        self.user_config = f'data/users/{username}/config.json'
+
+        if password is not None and token is None:
+            if not PostgreSQL().get_password(username) == password:
+                raise error.bad_password
+        elif password is None and token is not None:
+            if not PostgreSQL().validate_token(token):
+                raise error.bad_token
+            # Determines who the token belongs to
+            self.username = PostgreSQL().get_token_owner(token)
+        else:
+            raise PermissionError("Either password or token must be provided.")
+
+        self.is_admin = PostgreSQL().is_user_administrator(self.username)
+        self.user_config = f'data/users/{self.username}/config.json'
 
     def generate_token(self):
         """
@@ -113,9 +149,41 @@ class userman:
             belongs_to=self.username,
             token=token
         )
+        return token
 
     def is_restricted(self):
         return PostgreSQL().is_restricted(self.username)
 
     def set_restricted(self, status:bool):
         return PostgreSQL().set_restricted(self.username, status)
+
+    def list_private_repos(self):
+        return PostgreSQL().list_private_repos(self.username)
+
+    def list_public_repos(self):
+        return PostgreSQL().list_public_repos(self.username)
+
+    def create_repository(self, repo_name, description, is_private):
+        """
+        Register a repository in the database.
+        """
+        PostgreSQL().add_repository(
+            owner=self.username,
+            name=repo_name,
+            description=description,
+            is_private=is_private
+        )
+        repo_path = f'data/users/{self.username}/repositories/{repo_name}'
+        os.makedirs(repo_path, exist_ok=True)
+
+        # Create the .rdvcs file
+        config = dt.REPO_CONFIG
+        config["repo_id"] = repo_name
+        config["version"] = [1,0,0]  # Major, Minor, Patch
+        config["repo_name"] = repo_name
+        config["description"] = description
+
+        var.fill_json(
+            file=os.path.join(repo_path, '.rdvcs'),
+            data=config
+        )

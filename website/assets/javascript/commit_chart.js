@@ -10,7 +10,7 @@ function update_chart(username) {
     const currentProtocol = window.location.protocol;
     const web_url = `${currentProtocol}//${currentHost}:2048`;
 
-    fetch(`${web_url}/vcs/commits_chart`, {
+    fetch(`${web_url}/api/vcs/commits_chart`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -22,15 +22,9 @@ function update_chart(username) {
             let labels = Object.keys(data);
             let values = Object.values(data);
 
-            if (labels.length > 30) {
-                labels = labels.slice(0, 30);
-                values = values.slice(0, 30);
-            }
-            if (labels.length < 30) {
-                for (let i = labels.length; i < 30; i++) {
-                    labels.push('n/a');
-                    values.push(0);
-                }
+            if (labels.length > 14) {
+                labels = labels.slice(0, 14);
+                values = values.slice(0, 14);
             }
 
             const newData = { labels, values };

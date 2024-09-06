@@ -1,18 +1,23 @@
 from library.cmd_interface import cli_handler, colours
-from library.pylog import pylog
+from library.errors import error
 import subprocess
 import psycopg2
+import datetime
 import secrets
 import inspect
-import dotenv
+import logging
 import time
 import json
 import os
 
-logging = pylog()
+logging.basicConfig(
+    filename=f'logs/{datetime.datetime.now().strftime("%Y-%m-%d")}.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(filename)s - %(message)s'
+)
+
 key_seperator = '.'
 settings_path = 'settings.json'
-dotenv.load_dotenv('secret.env')
 DEBUG = os.environ.get('DEBUG', False)
 
 class dt:
@@ -34,22 +39,17 @@ class dt:
             'host': None,
             'port': None,
             'username': None,
-            'password': None,
+            'raindrop_password': None,
+            'postgres_password': None,
             'database': None
         }
     }
 
     REPO_CONFIG = {
-        "name": None,
+        "repo_id": None,
         "version": None,
+        "repo_name": None,
         "description": None,
-    }
-
-    USER_CONFIG = {
-        'username': None,
-        'password': None,
-        'bio': None,
-        'restricted': False,  # Whether the user is restricted from accessing Raindrop and the API
     }
 
 class var:
@@ -260,7 +260,7 @@ class postgre_cli:
 
         self.cli.register_command(
             'execute',
-            func=self.query_db()
+            func=self.query_db
         )
 
     def main(self):
@@ -278,7 +278,7 @@ class postgre_cli:
                     default=None,
                     ask_if_valid=True
                 )
-            except self.cli.exited_question:
+            except self.cli.exited_questioning:
                 break
             if arg is None:
                 break
@@ -312,7 +312,7 @@ class postgre_cli:
             return True
 
     def greet_func(self):
-        print(f"Welcome to the Raindrop-PostgreSQL CLI\n")
+        print(f"Welcome to the {self.cli.cli_name} CLI\n")
 
         db_status = PostgreSQL.check_db_container()
         if db_status == -1:
@@ -322,27 +322,31 @@ class postgre_cli:
 
     def pair(self):
         while True:
-            db_host = self.cli.ask_question(
-                "What is the Hostname of the PostgreSQL database?",
-                default=self.details.get('host', "127.0.0.1"),
-                filter_func=postgre_cli.filters.db_host
-            )
-            db_port = self.cli.ask_question(
-                "What is the Port of the PostgreSQL database?",
-                default=5432, filter_func=lambda x: x.isdigit()
-            )
-            db_username = self.cli.ask_question(
-                "What is the Username of the PostgreSQL database?",
-                default='api-raindrop',
-            )
-            db_password = self.cli.ask_question(
-                "What is the Password of the PostgreSQL database?",
-                default=var.get('db.raindrop_password'),
-            )
-            db_database = self.cli.ask_question(
-                "What is the Database of the PostgreSQL database?",
-                default='raindrop',
-            )
+            try:
+                db_host = self.cli.ask_question(
+                    "What is the Hostname of the PostgreSQL database?",
+                    default=self.details.get('host', "127.0.0.1"),
+                    filter_func=postgre_cli.filters.db_host
+                )
+                db_port = self.cli.ask_question(
+                    "What is the Port of the PostgreSQL database?",
+                    default=5432, filter_func=lambda x: x.isdigit()
+                )
+                db_username = self.cli.ask_question(
+                    "What is the Username of the PostgreSQL database?",
+                    default='api-raindrop',
+                )
+                db_password = self.cli.ask_question(
+                    "What is the Password of the PostgreSQL database?",
+                    default=var.get('db.raindrop_password'),
+                )
+                db_database = self.cli.ask_question(
+                    "What is the Database of the PostgreSQL database?",
+                    default='raindrop',
+                )
+            except self.cli.exited_questioning:
+                print("Exiting pairind mode.")
+                return True
 
             self.details = {
                 'host': db_host,
@@ -396,16 +400,19 @@ class postgre_cli:
 
 class PostgreSQL:
     def __init__(self):
-        self.details = PostgreSQL.get_details()
+        self.details = PostgreSQL.get_details(postgres=True)
 
         self.cli = postgre_cli()
 
         # Makes a test connection to the database
         self.ping_db()
 
+    def get_connection(self) -> psycopg2.extensions.connection:
+        return psycopg2.connect(**self.details)
+
     def ping_db(self, do_print=False):
         try:
-            conn = psycopg2.connect(**self.details)
+            conn = self.get_connection()
             conn.close()
             if do_print:
                 print("The database is online.")
@@ -442,7 +449,8 @@ class PostgreSQL:
         var.set(key='db.host', value=details['host'])
         var.set(key='db.port', value=details['port'])
         var.set(key='db.username', value=details['username'])
-        var.set(key='db.password', value=details['password'])
+        var.set(key='db.raindrop_password', value=details['raindrop_password'])
+        var.set(key='db.postgres_password', value=details['postgres_password'])
         var.set(key='db.database', value=details['database'])
 
     @staticmethod
@@ -509,7 +517,7 @@ class PostgreSQL:
                 check=True,
             )
         except subprocess.CalledProcessError as err:
-            logging.error('Could not create the container.', err)
+            logging.error(f'Could not create the container. {err}', )
             return False
 
         # Create the PostgreSQL schema/database and user
@@ -525,7 +533,11 @@ class PostgreSQL:
                 ],
                 check=True,
             )
+        except subprocess.CalledProcessError as err:
+            logging.error('Could not create the database on PostgreSQL.', err)
+            return False
 
+        try:
             raindrop_password = secrets.token_urlsafe(32)
 
             subprocess.run(
@@ -536,54 +548,110 @@ class PostgreSQL:
                 ],
                 check=True,
             )
-            subprocess.run(
-                [
-                    "docker", "exec", "-i", "raindrop-postgres",
-                    "psql", "-U", "postgres",
-                    "-c", "GRANT ALL PRIVILEGES ON DATABASE raindrop TO raindrop_api;"
-                ],
-                check=True,
-            )
         except subprocess.CalledProcessError as err:
-            logging.error('Could not create either the database on PostgreSQL or user.', err)
+            logging.error('Could not create the DB user.', err)
+            return False
+
+        try:
+            PostgreSQL().grant_all_perms()
+        except subprocess.CalledProcessError as err:
+            logging.error('Could not grant all permissions to the user.', err)
             return False
 
         # Set the password in the secrets file
-        with open('secret.env', 'a+') as f:
-            f.write(f"RAINDROP_PASSWORD={raindrop_password}\n")
-            f.write(f"POSTGRE_PASSWORD={postgres_password}\n")
-            f.write(f"POSTGRE_DATABASE=raindrop\n")
-            f.write(f"POSTGRE_USER=raindrop_api\n")
-            f.write(f"POSTGRE_HOST=0.0.0.0\n")
-            f.write(f"POSTGRE_PORT=5432\n")
+        PostgreSQL.save_details({
+            'host': '127.0.0.1',
+            'port': 5432,
+            'username': 'raindrop_api',
+            'raindrop_password': raindrop_password,
+            'postgres_password': postgres_password,
+            'database': 'raindrop'
+        })
 
         var.set('db.external', False)
+
+        PostgreSQL().modernize()
+
         return True
 
     @staticmethod
-    def get_details() -> dict:
+    def grant_all_perms():
+        subprocess.run(
+            [
+                "docker", "exec", "-i", "raindrop-postgres",
+                "psql", "-U", "postgres",
+                "-c", "GRANT ALL PRIVILEGES ON DATABASE raindrop TO raindrop_api;"
+            ],
+            check=True,
+        )
+
+    @staticmethod
+    def get_details(postgres=True) -> dict:
         return {
-            'host': os.environ.get('POSTGRE_HOST'),
-            'port': os.environ.get('POSTGRE_PORT'),
-            'user': os.environ.get('POSTGRE_USER'),
-            'password': os.environ.get('POSTGRE_PASSWORD'),
-            'database': os.environ.get('POSTGRE_DATABASE')
+            'host': var.get('db.host'),
+            'port': var.get('db.port'),
+            'user': var.get('db.username') if not postgres else 'postgres',
+            'password': var.get('db.raindrop_password') if not postgres else var.get('db.postgres_password'),
+            'database': var.get('db.database')
         }
 
     def modernize(self):
         # Fetch a database connection
-        conn = psycopg2.connect(**self.details)
+        conn = self.get_connection()
         cur = conn.cursor()
 
         # Using this dict, it formats the SQL query to create the tables if they don't exist
         table_dict = {
-            # Table name
             'tokens': {
-                # Column name: Column properties
-                'username': 'NOT NULL UNIQUE PRIMARY KEY',
-                'token': 'NOT NULL UNIQUE'
+                'username': 'TEXT NOT NULL UNIQUE PRIMARY KEY',
+                'token': 'TEXT NOT NULL UNIQUE'
+            },
+            'accounts': {
+                'user_id': 'SERIAL PRIMARY KEY',
+                'registered_on': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+                'username': 'TEXT NOT NULL UNIQUE',
+                'password': 'TEXT NOT NULL',
+                'restricted': 'BOOLEAN DEFAULT FALSE',
+                'bio': 'TEXT DEFAULT \'Feeling new? Make a bio!\'',
+            },
+            'repositories': {
+                'repo_id': 'SERIAL PRIMARY KEY',
+                'owner': 'TEXT NOT NULL REFERENCES accounts(username)',
+                'name': 'TEXT NOT NULL',
+                'description': 'TEXT',
+                'private': 'BOOLEAN DEFAULT FALSE',
+                'created_on': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+                'last_updated': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+            },
+            'user_permissions': {
+                'username': 'TEXT NOT NULL REFERENCES accounts(username)',
+                'administrator': 'BOOLEAN DEFAULT FALSE',
+            },
+            'commits': {
+                'commit_id': 'TEXT PRIMARY KEY',
+                'repo_id': 'INTEGER NOT NULL REFERENCES repositories(repo_id)',
+                'owner': 'TEXT NOT NULL REFERENCES accounts(username)',
+                'file_name': 'TEXT NOT NULL',
+                'file_version_id': 'TEXT NOT NULL',
+                'message': 'TEXT',
+                'timestamp': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+                'creation_time': 'TIMESTAMP',
+                'last_modified_time': 'TIMESTAMP',
+                'size': 'INTEGER'
+            },
+            'file_versions': {
+                'file_id': 'SERIAL PRIMARY KEY',
+                'repo_id': 'INTEGER NOT NULL REFERENCES repositories(repo_id)',
+                'file_name': 'TEXT NOT NULL',
+                'version_id': 'TEXT NOT NULL',
+                'file_path': 'TEXT NOT NULL',
+                'creation_time': 'TIMESTAMP',
+                'last_modified_time': 'TIMESTAMP',
+                'size': 'INTEGER'
             }
         }
+
+        PostgreSQL.grant_all_perms()
 
         for table_name, columns in table_dict.items():
             # Check if the table exists
@@ -618,13 +686,27 @@ class PostgreSQL:
                 columns_str = ', '.join(
                     [f'{column_name} {column_properties}' for column_name, column_properties in columns.items()]
                 )
-                cur.execute(f'CREATE TABLE {table_name} ({columns_str});')
+                try:
+                    cur.execute(f'CREATE TABLE {table_name} ({columns_str});')
+                except psycopg2.errors.DuplicateTable:
+                    continue
+                except psycopg2.errors.SyntaxError:
+                    logging.info(f"Could not create table '{table_name}'. Query:\n"
+                                 f"{f'CREATE TABLE {table_name} ({columns_str});'}")
+                    exit(1)
+                except psycopg2.errors.InsufficientPrivilege:
+                    logging.info("Insufficient privileges to create the table. Exiting.")
 
         # Commit the changes
         conn.commit()
 
     def save_token(self, belongs_to, token):
-        conn = psycopg2.connect(**self.details)
+        assert type(belongs_to) is str, "The username must be a string."
+        assert type(token) is str, "The token must be a string."
+        # Check if the user exists
+        self.check_exists(belongs_to)
+
+        conn = self.get_connection()
         cur = conn.cursor()
         try:
             cur.execute(
@@ -636,6 +718,522 @@ class PostgreSQL:
                 (belongs_to, token)
             )
             conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_token_owner(self, token):
+        assert type(token) is str, "The token must be a string."
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT username
+                FROM tokens
+                WHERE token = %s;
+                """,
+                (token,)
+            )
+            return cur.fetchone()[0]
+        finally:
+            cur.close()
+            conn.close()
+
+    def validate_token(self, token):
+        assert type(token) is str, "The token must be a string."
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT username
+                FROM tokens
+                WHERE token = %s;
+                """,
+                (token,)
+            )
+            valid = cur.fetchone() is not None
+        finally:
+            cur.close()
+            conn.close()
+        return valid
+
+    # TODO: Add a way for admins to create an account for a user without the user's input
+    def add_user(self, username:str, password:str):
+        assert type(username) is str, "The username must be a string."
+        assert type(password) is str, "The password must be a string."
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO accounts (username, password)
+                VALUES (%s, %s)
+                """,
+                (username, password)
+            )
+            conn.commit()
+        except psycopg2.errors.UniqueViolation:
+            return False
+        finally:
+            cur.close()
+            conn.close()
+            return True
+
+    # TODO: Add way for user to trigger the deletion of their account
+    def delete_user(self, username:str):
+        assert type(username) is str, "The username must be a string."
+
+        # Check if the user exists
+        self.check_exists(username)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                DELETE FROM accounts
+                WHERE username = %s;
+                """,
+                (username,)
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def check_exists(self, username:str, not_exist_ok=False):
+        conn = self.get_connection()
+        cur = conn.cursor()
+
+        assert type(username) is str, "The username must be a string."
+
+        try:
+            # Check if the owner exists
+            cur.execute(
+                """
+                SELECT username
+                FROM accounts
+                WHERE username = %s;
+                """,
+                (username,)
+            )
+            exists = cur.fetchone() is not None
+        finally:
+            cur.close()
+            conn.close()
+
+        if not exists:
+            if not_exist_ok is False:
+                raise error.user_nonexistant
+            else:
+                return False
+        else:
+            return True
+
+    def is_user_administrator(self, username:str):
+        # Check if the user exists
+        assert type(username) is str, "The username must be a string."
+        self.check_exists(username)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT administrator
+                FROM user_permissions
+                WHERE username = %s;
+                """,
+                (username,)
+            )
+            is_admin = cur.fetchone()[0]
+        # Excepts for when the user is not in the user_permissions table
+        except (TypeError, IndexError):
+            return False
+        finally:
+            cur.close()
+            conn.close()
+
+        return is_admin
+
+    # TODO: Add way for user to change password
+    def update_password(self, username:str, password:str):
+        # Check if the user exists
+        self.check_exists(username)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                UPDATE accounts
+                SET password = %s
+                WHERE username = %s;
+                """,
+                (password, username)
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_password(self, username:str):
+        # Check if the user exists
+        self.check_exists(username)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT password
+                FROM accounts
+                WHERE username = %s;
+                """,
+                (username,)
+            )
+            password = cur.fetchone()
+            if password is None:
+                return None
+            return password[0]
+        finally:
+            cur.close()
+            conn.close()
+
+    # TODO: Allow user to access this feature
+    def set_bio(self, username, bio):
+        # Check if the user exists
+        self.check_exists(username)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                UPDATE accounts
+                SET bio = %s
+                WHERE username = %s;
+                """,
+                (bio, username)
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_bio(self, username):
+        # Check if the user exists
+        self.check_exists(username)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT bio
+                FROM accounts
+                WHERE username = %s;
+                """,
+                (username,)
+            )
+            bio = cur.fetchone()
+            if bio is None:
+                return None
+            return bio[0]
+        finally:
+            cur.close()
+            conn.close()
+
+    # TODO: Add way for administrator to restrict users from using the service
+    def is_restricted(self, username):
+        # Check if the user exists
+        self.check_exists(username)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT restricted
+                FROM accounts
+                WHERE username = %s;
+                """,
+                (username,)
+            )
+            restricted = cur.fetchone()
+            if restricted is None:
+                return None
+            return restricted[0]
+        finally:
+            cur.close()
+            conn.close()
+
+    def set_restricted(self, username, new_status:bool):
+        # Check if the user exists
+        self.check_exists(username)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                UPDATE accounts
+                SET restricted = %s
+                WHERE username = %s;
+                """,
+                (new_status, username)
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def make_user_administrator(self, username):
+        # Check if the user exists
+        self.check_exists(username)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO user_permissions (username, administrator)
+                VALUES (%s, TRUE)
+                ON CONFLICT (username) DO UPDATE SET administrator = TRUE;
+                """,
+                (username,)
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def remove_user_administrator(self, username):
+        # Check if the user exists
+        self.check_exists(username)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO user_permissions (username, administrator)
+                VALUES (%s, FALSE)
+                ON CONFLICT (username) DO UPDATE SET administrator = FALSE;
+                """,
+                (username,)
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    # TODO: Add way for user to trigger the creation of a repository
+    def add_repository(self, owner:str, name:str, description:str, is_private:bool):
+        # Connect to the PostgreSQL database
+        conn = psycopg2.connect(**self.get_details())
+        cur = conn.cursor()
+
+        assert isinstance(is_private, bool)
+        assert isinstance(name, str)
+        assert isinstance(description, str)
+        assert isinstance(owner, str)
+
+        # Check if the owner exists
+        self.check_exists(owner)
+
+        # Insert the new repository
+        try:
+            cur.execute(
+                """
+                INSERT INTO repositories (owner, name, description, private)
+                VALUES (%s, %s, %s, %s);
+                """,
+                (owner, name, description, is_private)
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    # TODO: Add way for user to trigger the deletion of a repository
+    def delete_repository(self, owner:str, name:str):
+        # Connect to the PostgreSQL database
+        conn = psycopg2.connect(**self.get_details())
+        cur = conn.cursor()
+
+        assert isinstance(name, str)
+        assert isinstance(owner, str)
+
+        # Check if the owner exists
+        self.check_exists(owner)
+
+        # Delete the repository
+        try:
+            cur.execute(
+                """
+                DELETE FROM repositories
+                WHERE owner = %s AND name = %s;
+                """,
+                (owner, name)
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    # TODO: Add way for user to trigger updating if its private or not
+    def update_repository_is_private(self, owner, name, is_private):
+        # Connect to the PostgreSQL database
+        conn = psycopg2.connect(**self.get_details())
+        cur = conn.cursor()
+
+        assert isinstance(is_private, bool)
+        assert isinstance(name, str)
+        assert isinstance(owner, str)
+
+        # Check if the owner exists
+        self.check_exists(owner)
+
+        # Update the repository
+        try:
+            cur.execute(
+                """
+                UPDATE repositories
+                SET private = %s
+                WHERE owner = %s AND name = %s;
+                """,
+                (is_private, owner, name,)
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    # TODO: Add way for user to trigger updating the name of the repository
+    def update_repository_name(self, owner, old_name, new_name):
+        # Connect to the PostgreSQL database
+        conn = psycopg2.connect(**self.get_details())
+        cur = conn.cursor()
+
+        assert isinstance(new_name, str)
+        assert isinstance(old_name, str)
+        assert isinstance(owner, str)
+
+        # Check if the owner exists
+        self.check_exists(owner)
+
+        # Update the repository
+        try:
+            cur.execute(
+                """
+                UPDATE repositories
+                SET name = %s
+                WHERE owner = %s AND name = %s;
+                """,
+                (new_name, owner, old_name,)
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    # TODO: Add way for user to trigger updating the description of the repository
+    def update_repository_description(self, owner, name, description):
+        # Connect to the PostgreSQL database
+        conn = psycopg2.connect(**self.get_details())
+        cur = conn.cursor()
+
+        assert isinstance(description, str)
+        assert isinstance(name, str)
+        assert isinstance(owner, str)
+
+        # Check if the owner exists
+        self.check_exists(owner)
+
+        # Update the repository
+        try:
+            cur.execute(
+                """
+                UPDATE repositories
+                SET description = %s
+                WHERE owner = %s AND name = %s;
+                """,
+                (description, owner, name,)
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    @staticmethod
+    def sort_to_dict(cursor):
+        columns = [desc[0] for desc in cursor.description]
+        return [dict(zip(columns, item)) for item in cursor.fetchall()]
+
+    def list_public_repos(self, username):
+        # Check if the user exists
+        self.check_exists(username)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            # Execute the query to get repository data
+            cur.execute(
+                """
+                SELECT *
+                FROM repositories
+                WHERE owner = %s AND private = FALSE;
+                """,
+                (username,)
+            )
+
+            return PostgreSQL.sort_to_dict(cur)
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_private_repos(self, username):
+        # Check if the user exists
+        self.check_exists(username)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+
+        try:
+            cur.execute(
+                """
+                SELECT repo_id, name, description, owner, created_on, last_updated, private
+                FROM repositories
+                WHERE owner = %s AND private = TRUE;
+                """,
+                (username,)
+            )
+
+            # Return the data and sort it into a dictionary
+            return PostgreSQL.sort_to_dict(cur)
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_repo(self, owner, name):
+        # Check if the user exists
+        self.check_exists(owner)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT repo_id, name, description, owner, created_on, last_updated, private
+                FROM repositories
+                WHERE owner = %s AND name = %s;
+                """,
+                (owner, name)
+            )
+            return cur.fetchone()
         finally:
             cur.close()
             conn.close()

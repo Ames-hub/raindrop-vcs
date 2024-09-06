@@ -16,3 +16,7 @@ function goto_index_href () {
 function goto_repositories_href () {
     window.location = `${get_web_url()}/repositories.html`;
 }
+
+function goto_login_href () {
+    window.location = `${get_web_url()}/login.html`;
+}

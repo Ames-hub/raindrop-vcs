@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Raindrop Hub</title>
+    <link rel="icon" href="assets/img/icon.png">
+    <link rel="stylesheet" href="assets/css/login.css">
+</head>
+<body>
+    <div id="login">
+        <div id="message_banner" style="display: none;">  <!-- Initially hidden -->
+            <p id="message"></p>
+        </div>
+        <div class="login_container_header">
+            <img src="assets/img/icon.png" alt="Raindrop Hub">
+            <h1>Raindrop Hub</h1>
+
+            <!-- Toggle Switch -->
+            <label class="switch">
+                <input type="checkbox" id="toggleForm">
+                <span class="slider round"></span>
+            </label>
+
+            <div id="online_indicator"></div>
+
+            <!-- Login Form -->
+            <form id="login_form" class="login_form">
+                <input type="text" name="username" placeholder="Username" required>
+                <input type="password" name="password" placeholder="Password" required>
+                <button id="login_btn" type="submit">Login</button>
+            </form>
+
+            <!-- Register Form (initially hidden) -->
+            <form id="register_form" class="login_form" style="display: none;">
+                <input type="text" name="username" placeholder="Username" required>
+                <input type="password" name="password" placeholder="Password" required>
+                <button id="register_btn" type="submit">Register</button>
+            </form>
+        </div>
+    </div>
+    <script src="assets/javascript/login.js"></script>
+</body>
+</html>

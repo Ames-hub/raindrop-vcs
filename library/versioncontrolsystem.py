@@ -1,126 +1,192 @@
-from library.storage import var, dt
-import shutil
+from library.storage import PostgreSQL
+from library.errors import error
+from datetime import datetime
+import hashlib
 import os
 
-class versionControlSystem:
-    def __init__(self, username=None, repo_id="*", token=None):
+class vcs:
+    """
+    A class Meant especially for unauthorized access (public repositories and such)
+    """
+    @staticmethod
+    def list_pub_repositories(owner):
+        return PostgreSQL().list_public_repos(owner)
+
+    @staticmethod
+    def repository_exists(owner, repo_name):
+        conn = PostgreSQL().get_connection()
+        cursor = conn.cursor()
+
+        # Do not show if a private repository exists.
+        cursor.execute(
+            'SELECT EXISTS(SELECT 1 FROM repositories WHERE owner = %s AND name = %s AND is_private = FALSE)',
+            (owner, repo_name)
+        )
+        exists = cursor.fetchone()[0]
+
+        cursor.close()
+        conn.close()
+
+        return exists
+
+# noinspection PyMethodMayBeStatic
+class repository_handler:
+    def __init__(self, owner, repo_name):
         """
-        A class to manage versions of your code.
-
-        Records all changes to all files and has the ability to revert any file to any previous version.
-        :param repo_id:
+        Intended for pre-existing repositories only.
+        :param owner:
+        :param repo_name:
         """
-        if token is None and username is not None:
-            self.username = username
-            self.allow_secured_services = False
-        else:
-            # Does not check token validity. Userman does that.
-            self.token = token
-            # If token is provided, allow secured services. This means the user is logged in.
-            self.allow_secured_services = True
+        self.owner = owner
+        self.repo_name = repo_name
+        self.repo_path = f'data/users/{self.owner}/repositories/{self.repo_name}'
 
-        self.repo_id = repo_id
-        self.root_dir = os.path.abspath(os.path.join('data', 'users', str(username), 'repositories', str(repo_id)))
-        self.repo_main_dir = os.path.join(self.root_dir, 'branches', 'main')
-        self.repo_config = os.path.join(self.repo_main_dir, '.rdvcs')
-        self.is_initialized = self.exists()
-        self.is_owner = var.get('owner', file=self.repo_config) == self.username
-        if self.is_initialized:
-            self.version = self.get_version()  # Gets the highest version released.
+        if not self.check_repo_exists(not_exist_ok=True):
+            raise error.repository_not_found(repo_name)
 
-    def exists(self):
+    def get_is_private(self):
+        conn = PostgreSQL().get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            'SELECT is_private FROM repositories WHERE name = %s AND owner = %s',
+            (self.repo_name, self.owner)
+        )
+        is_private = cursor.fetchone()[0]
+
+        cursor.close()
+        conn.close()
+
+        return is_private
+
+    def get_description(self):
+        conn = PostgreSQL().get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            'SELECT description FROM repositories WHERE name = %s AND owner = %s',
+            (self.repo_name, self.owner)
+        )
+        description = cursor.fetchone()[0]
+
+        cursor.close()
+        conn.close()
+
+        return description
+
+    def check_repo_exists(self, not_exist_ok=False):
+        repo_exists = os.path.exists(self.repo_path)
+        # If the repository does not exist, raise an error if not_exist_ok is False
+        if not_exist_ok:
+            return repo_exists
+        if not repo_exists:
+            raise error.repository_not_found
+
+    def push_file(self, file_rel_dir, file_bytes, commit_message):
+        self.check_repo_exists()
+
+        file_version_id = self.get_new_version_id(file_rel_dir)
+
+        # Store the file's new version
+        dest_path = os.path.join(self.repo_path, file_rel_dir, file_version_id)
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+
+        # Write bytes to the file
+        with open(dest_path, 'wb') as f:
+            f.write(file_bytes)
+
+        # Create a commit entry in the database
+        self.create_commit(file_rel_dir, file_version_id, commit_message)
+
+    def get_new_version_id(self, file_rel_dir):
+        file_path = os.path.join(self.repo_path, file_rel_dir)
+        file_exists = os.path.exists(file_path)
+
+        version_id = "v1"
+        if file_exists:
+            current_versions = os.listdir(file_path)
+            last_version = max(current_versions)
+            version_number = int(last_version[1:]) + 1
+            version_id = f"v{version_number}"
+
+        return version_id
+
+    def create_commit(self, file_rel_dir, file_version_id, commit_message):
+        conn = PostgreSQL().get_connection()
+        cursor = conn.cursor()
+
+        commit_id = self.generate_commit_id()
+        timestamp = datetime.now()
+
+        # Fetch repo_id for the current repository
+        cursor.execute('SELECT repo_id FROM repositories WHERE name = %s AND owner = %s', (self.repo_name, self.owner))
+        repo_id = cursor.fetchone()[0]
+
+        cursor.execute("""
+            INSERT INTO commits (commit_id, repo_id, owner, file_name, file_version_id, message, timestamp)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (
+            commit_id, repo_id, self.owner, file_rel_dir, file_version_id,
+            commit_message, timestamp
+        ))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+    def generate_commit_id(self):
+        return hashlib.sha256(f"{self.repo_name}{datetime.now()}".encode()).hexdigest()
+
+    def list_files(self):
+        self.check_repo_exists()
+        files_list = []
+        for file_name in os.listdir(self.repo_path):
+            file_path = os.path.join(self.repo_path, file_name)
+            if os.path.isdir(file_path):
+                versions = os.listdir(file_path)
+                latest_version = max(versions)
+                files_list.append((file_name, latest_version))
+        return files_list
+
+    def get_file_versions(self, file_name):
+        file_path = os.path.join(self.repo_path, file_name)
+        if not os.path.exists(file_path):
+            raise FileNotFoundError
+
+        return os.listdir(file_path)
+
+    def get_files_for_version(self, version_id):
         """
-        Checks if the repository exists.
+        Retrieve all files for a specific version of the repository.
+
+        :param version_id: The version ID to retrieve files for.
+        :return: A dictionary with file paths and their content in bytes.
         """
-        return os.path.exists(self.repo_config)
+        self.check_repo_exists()
 
-    def walk(self, version='latest') -> dict | bool:
+        files_content = {}
+        for root, dirs, files in os.walk(self.repo_path):
+            for file_name in files:
+                file_version_path = os.path.join(root, file_name, version_id)
+                if os.path.exists(file_version_path):
+                    with open(file_version_path, 'rb') as f:
+                        files_content[file_name] = f.read()
+        return files_content
+
+    def get_file_for_version(self, file_rel_dir, version_id):
         """
-        Walks through the repository and returns the directories and files.
+        Retrieve a specific file for a specific version of the repository.
+
+        :param file_rel_dir: The relative directory of the file within the repository.
+        :param version_id: The version ID to retrieve the file for.
+        :return: The content of the file in bytes.
+        :raises FileNotFoundError: If the file or version does not exist.
         """
-        if version == 'latest':
-            version = self.version
+        self.check_repo_exists()
 
-        directories = {}
-        version_dir = os.path.join(self.root_dir, version)
+        file_version_path = os.path.join(self.repo_path, file_rel_dir, version_id)
+        if not os.path.exists(file_version_path):
+            raise FileNotFoundError(f"File '{file_rel_dir}' with version '{version_id}' does not exist.")
 
-        if not os.path.exists(version_dir):
-            return False
-
-        for root, dirs, files in os.walk(version_dir):
-            directories[root] = files
-
-        return directories
-
-    def get_version(self):
-        # Reads the .rdvcs file and returns the version.
-        return var.get('version', file=self.repo_config)
-
-    def init_repo(self, description: str = None):
-        """
-        Initializes a new repository.
-        """
-        os.makedirs(self.repo_main_dir, exist_ok=True)
-
-        repo_conf = dt.REPO_CONFIG
-        repo_conf['name'] = self.repo_id
-        repo_conf['description'] = description
-        # Reminder, 1.0.0 = Major.Minor.Patch. Major here, includes release or 'ver 1'.
-        repo_conf['version'] = [1, 0, 0]
-        repo_conf['owner'] = self.username
-
-        var.fill_json(os.path.join(self.repo_config, repo_conf))
-
-    def push(self, file: bytes, rel_dir: str, update_cat='patch') -> bool:
-        """
-        Pushes a file to the repository.
-        :param file: The file as bytes data to push.
-        :param rel_dir: The relative directory to the file.
-        :param update_cat: The category of the update. (major, minor, patch)
-        """
-        assert update_cat in ['major', 'minor', 'patch'], 'Invalid update category.'
-        assert file is not None, 'File is empty.'
-        assert type(file) is bytes, 'File must be bytes data.'
-        assert rel_dir is not None, 'Relative directory is empty.'
-
-        # Create a snapshot of the file before writing to it.
-        self.new_snapshot()
-
-        file_dir = os.path.join(self.repo_main_dir, rel_dir)
-        os.makedirs(file_dir, exist_ok=True)
-        # In the main branch, write the new version file.
-        var.set('version', self.version, file=self.repo_config)
-
-        with open(file_dir, 'wb') as f:
-            f.write(file)
-
-        return True
-
-    def pull(self, rel_dir, version) -> bytes | None:
-        """
-        Pulls a file from the repository.
-        :param version:
-        :param rel_dir: The relative directory to the file.
-        :return: The file as bytes data.
-        """
-        assert type(rel_dir) is str, 'Relative directory must be a string.'
-        assert type(version) is list
-        # Enforces the format of list [major, minor, patch]
-        assert len(version) == 3, 'Version must be in the format [major, minor, patch].'
-        if not os.path.exists(os.path.join(self.root_dir, version)):
-            return None
-
-        file_dir = os.path.join(self.root_dir, version, rel_dir)
-
-        with open(file_dir, 'rb') as f:
+        with open(file_version_path, 'rb') as f:
             return f.read()
-
-    def new_snapshot(self):
-        """
-        Creates a new snapshot of the repository.
-        """
-        snapshot_dir = os.path.join(self.root_dir, 'snapshots')
-        os.makedirs(snapshot_dir, exist_ok=True)
-
-        snapshot_dir = os.path.join(snapshot_dir, self.version)
-        shutil.copytree(self.root_dir, snapshot_dir)

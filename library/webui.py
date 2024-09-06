@@ -1,10 +1,7 @@
 from library.cmd_interface import cli_handler
 from library.storage import var
-from library.pylog import pylog
 import subprocess
 import os
-
-logging = pylog()
 
 class webgui:
     @staticmethod
@@ -14,7 +11,11 @@ class webgui:
         :return: True if installed, False if not
         """
         # Gets all the docker containers
-        result = subprocess.run(['docker', 'ps', '-a', '--format', '{{.Names}}'], capture_output=True, text=True)
+        try:
+            result = subprocess.run(['docker', 'ps', '-a', '--format', '{{.Names}}'], capture_output=True, text=True)
+        except FileNotFoundError:  # App not found
+            return False
+
         if 'raindrop-webui' in result.stdout:
             installed = True
         else:
@@ -39,7 +40,6 @@ class webgui:
         config_file = os.path.join(os.getcwd(), 'nginx.conf')
 
         if not os.path.exists(config_file):
-            logging.warning(f"Config file 'nginx.conf' does not exist in the project directory.")
             return False
 
         port: int = var.get('webgui.port')
@@ -59,8 +59,7 @@ class webgui:
             ]
             try:
                 subprocess.run(docker_command)
-            except Exception as err:
-                logging.error(f"Failed to create the 'raindrop-webui' container.", err)
+            except Exception:
                 return False
 
         if for_CLI:

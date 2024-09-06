@@ -1,19 +1,23 @@
 from difflib import get_close_matches
 from colorama import Fore, Style
-from library.pylog import pylog
 from typing import List
 import importlib.util
 import platform
 import colorama
-import dotenv
+import datetime
+import logging
 import os
 
-dotenv.load_dotenv('secrets.env')
+os.makedirs('logs/', exist_ok=True)
 
-logging = pylog()
-DEBUG = bool(os.environ.get('DEBUG', False))
-
+DEBUG = os.environ.get('RD_DEBUG', False)
 colorama.init(autoreset=True)
+
+logging.basicConfig(
+    filename=f'logs/{datetime.datetime.now().strftime("%Y-%m-%d")}.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(filename)s - %(funcName)s - line %(lineno)d - %(message)s'
+)
 
 colours = {
     'red': Fore.RED,
@@ -106,7 +110,6 @@ class cli_handler:
                 max_args_possible = len(self.cmds_dict[cmd]['args'])
 
         self.max_args = max_args_possible
-        logging.info(f"CLI Handler initialised for {cli_name}. Current commands:")
 
     def exit(self):
         """
@@ -293,7 +296,7 @@ class cli_handler:
             colour='green',
             allow_default: bool = True,
             show_options: bool = True,
-            exit_notif_msg: str = " | Type '{exit_phrase}' to exit.",
+            exit_notif_msg: str = "default",
             clear_terminal: bool = True
     ) -> str:
         """
@@ -332,6 +335,10 @@ class cli_handler:
         assert type(show_options) is bool, f"show_options must be a boolean. Not {type(show_options)}"
         assert type(clear_terminal) is bool, f"clear_terminal must be a boolean. Not {type(clear_terminal)}"
 
+        # Doing it like this since the f-string doesn't work in the args
+        if exit_notif_msg == "default":
+            exit_notif_msg = f" | Type '{exit_phrase}' to exit."
+
         try:
             if clear_terminal:
                 self.clear_terminal()
@@ -349,7 +356,7 @@ class cli_handler:
                     if allow_default:
                         answer = default
                 if answer == exit_phrase:
-                    raise self.exited_question
+                    raise self.exited_questioning
 
                 # Check if the answer is valid
                 if confirm_validity:
@@ -374,9 +381,9 @@ class cli_handler:
 
                 return answer
         except KeyboardInterrupt:
-            raise self.exited_question
+            raise self.exited_questioning
 
-    class exited_question(Exception):
+    class exited_questioning(Exception):
         def __init__(self):
             super().__init__("User cancelled the question and answer session.")
 
@@ -426,7 +433,7 @@ class cli_handler:
             except KeyboardInterrupt:
                 return True
 
-    def register_command(self, cmd:str, func, description='', args=[], func_args=None) -> bool:
+    def register_command(self, cmd:str, func, description='', args:list=[], func_args:tuple=None) -> bool:
         """
         Registers a command with its corresponding function.
 
@@ -543,7 +550,7 @@ class cli_handler:
                     return True
             except AssertionError as err:
                 print(f"{colours['red']}{err}")
-                logging.error(f"Assertion Error: {err}", exception=err)
+                logging.error(f"Assertion Error: {err}")
         except KeyboardInterrupt:
             print(f"{colours['red']}Exiting...")
             logging.info(f"User exited the '{self.cli_name}' CLI.")

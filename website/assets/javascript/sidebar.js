@@ -82,5 +82,18 @@ function keepAliveCheck () {
         });
 }
 
+function sidebar_setuser() {
+    var profile_title = `${localStorage.getItem('username')}`;
+
+    // If the profile title is greater than 15 characters, make the font size smaller.
+    if (profile_title.length > 15) {
+        document.getElementById("nav_profile").style.fontSize = "10px";
+    }
+
+    document.getElementById("nav_profile").innerHTML = profile_title;
+}
+
+sidebar_setuser();
+
 keepAliveCheck();
 setInterval(keepAliveCheck, 15000);
