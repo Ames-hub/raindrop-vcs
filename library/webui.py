@@ -31,7 +31,6 @@ class webgui:
         if for_CLI:
             print("Installing the WebUI container now...")
 
-        # Create the docker client
         os.system('docker pull nginx')
 
         content_dir = os.path.join(os.getcwd(), 'website\\')
@@ -90,7 +89,7 @@ class webgui:
             webui_cli.register_command(
                 cmd='setup',
                 func=webgui.install,
-                func_args=[True],
+                func_args=(True,),
                 description='Install the WebUI container'
             )
 

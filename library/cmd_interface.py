@@ -2,10 +2,12 @@ from difflib import get_close_matches
 from colorama import Fore, Style
 from typing import List
 import importlib.util
+import threading
 import platform
 import colorama
 import datetime
 import logging
+import time
 import os
 
 os.makedirs('logs/', exist_ok=True)
@@ -60,6 +62,7 @@ class cli_handler:
         self.is_main_cli = is_main_cli
         self.running = True
         self.plugins_dir = plugins_dir
+        self.running_threads = []
 
         if use_default_cmds:
             # Sets up the default commands as registered cmds and cmd_dict entries.
@@ -67,7 +70,7 @@ class cli_handler:
                 cmd='help',
                 func=self.help_cmd,
                 description='Get help with all available commands.',
-                args=[],
+                options={},
                 func_args=None,
             )
 
@@ -77,19 +80,18 @@ class cli_handler:
                 cmd='exit',
                 func=self.exit,
                 description='Exits the CLI.',
-                args=[],
+                options={},
                 func_args=None
             )
 
-            # Register the clear command with aliases (way of doing it without extra code. Will do properly one day)
-            for alias in ['cls', 'clear']:
-                self.register_command(
-                    cmd=alias,
-                    func=self.clear_terminal,
-                    description='Clears the terminal screen.',
-                    args=[],
-                    func_args=None
-                )
+            self.register_command(
+                cmd="cls",
+                aliases=["clear", "clearscreen"],
+                func=self.clear_terminal,
+                description='Clears the terminal screen.',
+                options={},
+                func_args=None
+            )
 
             # Load plugins last
             if use_plugins:
@@ -106,16 +108,15 @@ class cli_handler:
         # Looks in the args of each command to see how many args it can take. Counts the max.
         max_args_possible = 0
         for cmd in self.cmds_dict:
-            if len(self.cmds_dict[cmd]['args']) > max_args_possible:
-                max_args_possible = len(self.cmds_dict[cmd]['args'])
-
-        self.max_args = max_args_possible
+            if len(self.cmds_dict[cmd]['options']) > max_args_possible:
+                max_args_possible = len(self.cmds_dict[cmd]['options'])
 
     def exit(self):
         """
         Exits the CLI.
         """
         if self.is_main_cli:
+            self.running = False
             raise KeyboardInterrupt
         else:
             self.running = False
@@ -160,11 +161,16 @@ class cli_handler:
         try:
             # Convert the file path to module path
             spec = importlib.util.spec_from_file_location(class_name, plugin_file_dir)
+            # Load the module
             plugin_module = importlib.util.module_from_spec(spec)
+            # Execute the module
             spec.loader.exec_module(plugin_module)
 
             # Get the class from the module
-            plugin_class = getattr(plugin_module, class_name)
+            try:
+                plugin_class = getattr(plugin_module, class_name)
+            except AttributeError:
+                raise AttributeError(f"Class {class_name} not found in plugin file '{plugin_file_dir}'.")
             plugin_instance = plugin_class()  # Instantiate the class
 
             # Get the functions 'main' and 'help' from the instance
@@ -176,9 +182,40 @@ class cli_handler:
                 raise AttributeError("The plugin class must have callable 'main' and 'help' methods.")
 
             # Load plugin name and description
-            with open(os.path.join(os.path.dirname(plugin_file_dir), 'plugin'), 'r') as f:
-                plugin_name = f.readline().strip()
-                plugin_desc = f.readline().strip()
+            keyvals = self.plugin_config_loadkeys(plugin_file_dir)
+            plugin_name = keyvals['name']
+            plugin_desc = keyvals['description']
+            do_pass_cmd = keyvals.get('do_pass_cmd', False)
+            func_args = keyvals.get('func_args', None)
+            options = {'args': keyvals.get('options', {}), 'kwargs': keyvals.get('kw_options', {})}
+            cmd_aliases:list = keyvals.get('aliases', [])
+            auto_task_timer:int = keyvals.get('auto_task_timer', -1)
+
+            # Check if the plugin has an automatic task to run
+            if int(auto_task_timer) != -1:
+                automated_task = getattr(plugin_instance, 'automatic', None)
+                if not callable(automated_task):
+                    raise AttributeError("The plugin class must have a callable 'automatic' method if 'auto_task_timer' is set.")
+                try:
+                    if auto_task_timer < 0.1:
+                        raise ValueError("auto_task_timer must be greater than 0.1")
+                except ValueError:
+                    raise ValueError("auto_task_timer must be an integer.")
+
+                def task_worker():
+                    while self.running:
+                        automated_task()
+                        try:
+                            time.sleep(auto_task_timer)
+                        except:
+                            break
+
+                # Register the automated task to run every x seconds as a threading thread if it does not already exist.
+                # Prevents double-ups.
+                if not plugin_file_dir in self.running_threads:
+                    task_thread = threading.Thread(target=task_worker, name=plugin_file_dir, daemon=True)
+                    self.running_threads.append(plugin_file_dir)
+                    task_thread.start()
 
             if " " in plugin_name:
                 raise ValueError("Plugin name cannot have spaces.")
@@ -188,26 +225,92 @@ class cli_handler:
                 cmd=plugin_name,
                 func=main_func,
                 description=plugin_desc,
-                args=[],
-                func_args=None
+                options=options,
+                func_args=func_args,
+                aliases=cmd_aliases,
+                do_pass_cmd=do_pass_cmd
             )
             self.register_plugin_help_func(plugin_name, help_func)
 
             return True
         except (ImportError, AttributeError, ValueError, FileNotFoundError) as err:
-            logging.error(f"Error loading plugin: {err}", err)
+            logging.error(f"Error loading plugin: {err}", exc_info=True)
 
         return False
 
-    def load_plugins_from(self, plugin_dir: str) -> bool:
-        assert os.path.isdir(plugin_dir), "Plugin directory does not exist."
-        for plugin in os.listdir(plugin_dir):
-            if os.path.isdir(f"{plugin_dir}/{plugin}"):
-                # Finds any file that ends with .py in the dir
-                python_file = [f for f in os.listdir(f"{plugin_dir}/{plugin}") if f.endswith('.py')][0]
+    def plugin_config_loadkeys(self, plugin_dir) -> dict:
+        """
+        Loads the keys from the plugin config file.
+        """
+        with open(f"{os.path.join(plugin_dir, '..')}/plugin.cf", "r") as plugin_config:
+            file = plugin_config.readlines()
+
+        valid_keys = [
+            "name",
+            "description",
+            "aliases",  # example: myplugin,theplugin,plugin
+            "do_pass_cmd",  # Whether to pass the full prompt to the CLI to the plugin. Default is False.
+            "func_args",  # This isn't too helpful. Will be removed in the future.
+            "options",  # example: the command may be "example_plugin now", where "now" is an option.
+            'kw_options',  # example: time_to_wait-INT,
+            "expected_options_only",  # example: True
+            "auto_task_timer",  # example: 20 (seconds)
+        ]
+        keyvals = {}
+        for line in file:
+            key = line.split("=")[0]
+            value = line.split("=")[1].strip()
+
+            if key not in valid_keys:
+                logging.warning(f"Invalid key in plugin config file: {key}")
+                continue
+
+            if key in ["aliases", "options"]:
+                value = value.split(",")
+            elif key == "do_pass_cmd" or key == "expected_options_only":
+                value = bool(value)
+            elif key == "func_args":
+                value = tuple(value.split(","))
+            elif key == "kw_options":
+                kw_options = value.split(",")
+                # kw_v = keyword-value
+                for kw_v in kw_options:
+                    kw_v = kw_v.split("-")
+                    try:
+                        option_key = kw_v[0]
+                        option_type = kw_v[1]
+                    except:
+                        logging.error(
+                            f"Invalid key-value pair in plugin config file: {kw_v}\n"
+                            "Do you have a trailing comma that isn't meant to be there?",
+                            exc_info=True
+                        )
+                        continue
+                    value = {option_key: option_type}
+
+            keyvals[key] = value
+
+        return keyvals
+
+    def load_plugins_from(self, plugins_root_dir: str) -> bool:
+        """
+        Load all plugins from a directory.
+        :param plugins_root_dir:
+        :return:
+        """
+        if not os.path.isdir(plugins_root_dir):
+            print("Plugin directory does not exist.")
+            return False
+        for plugin_dir in os.listdir(plugins_root_dir):
+            if os.path.isdir(f"{plugins_root_dir}/{plugin_dir}"):
+                # Find any file with the .py extension in the plugins directory, and select the first one.
+                python_file = [file for file in os.listdir(f"{plugins_root_dir}/{plugin_dir}") if file.endswith(".py")][0]
 
                 # Load the absolute path of the plugin
-                self.load_plugin(os.path.abspath(f"{plugin_dir}/{plugin}/{python_file}"), plugin)
+                self.load_plugin(
+                    plugin_file_dir=os.path.abspath(f"{plugins_root_dir}/{plugin_dir}/{python_file}"),
+                    class_name=plugin_dir.replace(".py", "")
+                )
         return True
 
     def register_plugin_help_func(self, plugin_name: str, help_func) -> bool:
@@ -219,7 +322,7 @@ class cli_handler:
         :return: True if the help function was registered successfully.
         """
         self.cmds_dict["help"]["plugins"][plugin_name] = help_func
-        self.cmds_dict["help"]["args"].append(plugin_name)
+        self.cmds_dict["help"]["options"]["args"].append(plugin_name)
         self.registered_commands["help"]["uses_args"] = True
         return True
 
@@ -229,8 +332,8 @@ class cli_handler:
         Used to help the user if they mistype a command.
 
         :param cmd: The command to find similar commands to.
-        :param ask_to_execute: If True, asks the user if they want to execute the similar command or not.
         :param cmd_args: The arguments of the command.
+        :param ask_to_execute: If True, asks the user if they want to execute the similar command or not.
         :return: The list of similar commands or None if the user doesn't want to execute them or there are none similar
         """
         try:
@@ -246,7 +349,7 @@ class cli_handler:
 
         if cmd_args is not None:
             if len(cmd_args) > 0:
-                possible_args = self.cmds_dict[similar_cmd]['args']
+                possible_args = self.cmds_dict[similar_cmd]['options']
                 similar_args = []
                 for i in range(len(cmd_args)):
                     # Finds the similar args for the similar command.
@@ -265,7 +368,7 @@ class cli_handler:
              f'(ask if should execute: {ask_to_execute}) Found similar command: \"{similar_cmd}\".'
         )
         if not ask_to_execute:
-            return {'cmd': similar_cmd, 'args': cmd_args}
+            return {'cmd': similar_cmd, 'options': cmd_args}
         else:
             try:
                 facsimile_cmd = f"{similar_cmd} {' '.join(cmd_args)}".strip()
@@ -278,7 +381,7 @@ class cli_handler:
             response = input('>>> ').lower()
             if response not in ['n', 'no']:
                 logging.info(f'User chose to execute the similar command: \"{similar_cmd}\".')
-                return {'cmd': similar_cmd, 'args': cmd_args}
+                return {'cmd': similar_cmd, 'options': cmd_args}
             else:
                 logging.info(f'User did not execute the similar command: \"{similar_cmd}\".')
                 return None
@@ -398,9 +501,9 @@ class cli_handler:
             return self.cmds_dict
         else:
             for cmd, desc in self.cmds_dict.items():
-                cmd_has_args = len(desc['args']) != 0
+                cmd_has_args = len(desc['options']) != 0
                 if cmd_has_args:
-                    args_msg = f"\nParameters: {', '.join(desc['args'])}"
+                    args_msg = f"\nParameters: {', '.join(desc['options'])}"
                 else:
                     args_msg = "\nNo parameters."
                 print(f"- {cmd}: {desc['msg']}{args_msg}\n")
@@ -413,14 +516,14 @@ class cli_handler:
                 pass
             return True
 
-    def help_cmd(self, args=None):
+    def help_cmd(self, options:dict):
         """
         The help command. Lists all available commands or shows help for a specific plugin.
         """
-        if args:
-            if args[0] in self.cmds_dict.get('help', {}).get('plugins', {}):
+        if options.get('args', -1) != -1 and len(options.get("args", [])) > 0:
+            if options['args'][0] in self.cmds_dict.get('help').get('plugins'):
                 # Show help for the specific plugin
-                plugin_name = args[0]
+                plugin_name = options['args'][0]
                 help_func = self.cmds_dict['help']['plugins'][plugin_name]
                 help_func()  # Call the plugin's help function
             return True
@@ -433,7 +536,8 @@ class cli_handler:
             except KeyboardInterrupt:
                 return True
 
-    def register_command(self, cmd:str, func, description='', args:list=[], func_args:tuple=None) -> bool:
+    def register_command(self, cmd:str, func, description='', options:dict={}, expected_options_only:bool=False,
+                         func_args:tuple=None, aliases:list=[], do_pass_cmd:bool=False) -> bool:
         """
         Registers a command with its corresponding function.
 
@@ -441,7 +545,10 @@ class cli_handler:
         :param func: The function to execute when the command is called.
         :param func_args: The arguments that the function takes.
         :param description: Description of the command.
-        :param args: List of potential arguments for the command.
+        :param options: List of potential arguments for the command.
+        :param expected_options_only: If True, the command only accepts the options in the options list.
+        :param aliases: List of aliases for the command.
+        :param do_pass_cmd: If True, passes the specific command typed to the function.
 
         :return: True if the command was registered successfully.
 
@@ -450,13 +557,77 @@ class cli_handler:
         but func_args is the arguments that the function takes. It'd be called like any python func would be with those
         args.
         """
+        assert type(cmd) is str, f"cmd must be a string, not {type(cmd)}"
+        assert callable(func), f"func must be a callable, not {type(func)}"
+        assert type(description) is str, f"description must be a string, not {type(description)}"
+        assert type(options) is dict, f"options must be a dictionary, not {type(options)}"
+        assert type(expected_options_only) is bool, f"expected_options_only must be a boolean, not {type(expected_options_only)}"
+        assert type(func_args) is tuple or func_args is None, f"func_args must be a tuple or None, not {type(func_args)}"
+        assert type(aliases) is list, f"aliases must be a list, not {type(aliases)}"
+        assert type(do_pass_cmd) is bool, f"do_pass_cmd must be a boolean, not {type(do_pass_cmd)}"
+
+        # Ensures the options dict is valid.
+        if options.get('args', None) is not None:
+            for option in options['args']:
+                if not isinstance(option, str):
+                    print(f"options must be a list of strings, not \"{type(option)}\"")
+                    return False
+        else:
+            options['args'] = []
+
+        if options.get('kwargs', {}) != {}:
+            for key in options['kwargs']:
+                expected_type = options['kwargs'][key]
+                if not isinstance(key, str):
+                    print(f"options keys must be strings, not \"{type(key)}\"")
+                    return False
+                if not expected_type.lower() in ["int", "str", "bool"]:
+                    print(f"options values must be types, eg 'INT', 'STR', 'BOOL', not \"{str(expected_type)}\"")
+                    return False
+                else:
+                    expected_type = expected_type.lower()
+                    options['kwargs'][key] = expected_type
+                    if expected_type == "int":
+                        options['kwargs'][key] = int
+                    elif expected_type == "str":
+                        options['kwargs'][key] = str
+                    elif expected_type == "bool":
+                        options['kwargs'][key] = bool
+
         cmd = cmd.lower()
         self.registered_commands[cmd] = {}
         self.registered_commands[cmd]['func'] = func
-        self.registered_commands[cmd]['uses_args'] = func_args is not None
+        self.registered_commands[cmd]['aliases'] = aliases
+        self.registered_commands[cmd]['expected_options_only'] = expected_options_only
+        self.registered_commands[cmd]['uses_args'] = options != {}
         self.registered_commands[cmd]['args'] = func_args
-        self.cmds_dict[cmd] = {'msg': description, 'args': args}
+        self.registered_commands[cmd]['do_pass_cmd'] = do_pass_cmd
+        self.cmds_dict[cmd] = {'msg': description, 'options': options}
         return True
+
+    def is_alias(self, possible_alias: str) -> bool:
+        """
+        Checks if a command is an alias for another command.
+
+        :param possible_alias: The command to check.
+        :return: True if the command is an alias for another command.
+        """
+        for command in self.cmds_dict:
+            if possible_alias.lower() in self.registered_commands[command]['aliases']:
+                return True
+        return False
+
+    def return_alias_origin(self, alias: str) -> str | None:
+        """
+        Returns the original command as a string that an alias is an alias for.
+
+        :param alias: The alias to check.
+        :return: The original command that the alias is an alias for.
+        """
+        for command in self.cmds_dict:
+            if alias in self.registered_commands[command]['aliases']:
+                return command
+        return None
 
     def main(self):
         """
@@ -473,6 +644,7 @@ class cli_handler:
 
             try:
                 while self.running:
+                    options = {'args': [], 'kwargs': {}}
                     if not executing_similar[0]:
                         if self.greet_func is not None:
                             self.greet_func()
@@ -480,30 +652,60 @@ class cli_handler:
                             print(f"Welcome to the {self.cli_name} CLI.")
                             print("Type 'help' for a list of commands.")
                         prompt = input(f"{colours['green']}{self.cli_name}{colours['end']}> ").lower()
-                        prompt_split = prompt.split(" ")
-                        # Takes all the arguments after the command and puts them in a list
-                        args = prompt_split[1:] if len(prompt_split) > 1 else None
-                        cmd = prompt_split[0]
+                        # Assosciates key-value with the args as they are passed in like "cmd key=value" or "cmd key="spaces and value"
+                        # takes the prompt and removes the command and preserves the rest of the string as a string
+                        try:
+                            args_passed = " ".join(prompt.split(" ")[1:])
+                        except IndexError:
+                            args_passed = ""
+                        if len(args_passed) > 0:
+                            # splits the args into key-value pairs
+                            for arg in args_passed.split(" "):
+                                # Handles Kwarg style args
+                                if "=" in arg:
+                                    key = arg.split("=")[0]
+                                    # Finds the index of the key in the prompt
+                                    value_index_a = prompt.index(key) + len(key) + 1
+                                    # Finds the next quote mark after the key
+                                    prompt_after_key = prompt[value_index_a:]
+                                    if '"' in prompt[value_index_a:]:
+                                        value_index_b = prompt_after_key.index('"')
+                                    elif "'" in prompt[value_index_a:]:
+                                        value_index_b = prompt_after_key.index("'")
+                                    elif not "'" in prompt_after_key and '"' not in prompt_after_key:
+                                        # Finds the next space after the key
+                                        try:
+                                            value_index_b = prompt_after_key.index(" ")
+                                        except ValueError:
+                                            value_index_b = len(prompt_after_key) + value_index_a
+                                    else:
+                                        value_index_b = len(prompt_after_key) + value_index_a
+                                    # Gets the value from the prompt
+                                    value = prompt[value_index_a:value_index_b]
+
+                                    # Adds the key-value pair to the options dictionary
+                                    options['kwargs'][key] = value
+                                else:
+                                    # Handles normal args
+                                    options['args'].append(arg)
+
+                        cmd = prompt.split(" ")[0]
                     else:
                         cmd = executing_similar[1]
-                        args = executing_similar[2]
+                        options['args'] = executing_similar[2]
+                        # Reset the tuple to prevent infinite loops.
+                        # noinspection PyUnusedLocal
                         executing_similar = (False, None, None)
 
                     if DEBUG == 'True':
                         logging.debug(f'User input: {cmd}')
-                        logging.debug(f'Arguments: {args}')
-
-                    max_args_possible = self.max_args
-                    # If there are no args, pad the list with None.
-                    if max_args_possible > 0 and args:
-                        if len(args) < max_args_possible:
-                            # noinspection PyTypeChecker
-                            args.extend([None] * (max_args_possible - len(args)))
-
-                    if args and len(args) > max_args_possible:
-                        print(f"{colours['red']}Too many arguments.")
-                        logging.warning(f"Too many arguments: {args}")
-                        continue
+                        try:
+                            # noinspection PyUnboundLocalVariable
+                            logging.debug(f"Prompt: {prompt}")
+                        except UnboundLocalError:
+                            logging.debug("Prompt: None, executing similar command.")
+                            # This is for if executing_similar is True
+                        logging.debug(f'Options: {options}')
 
                     if cmd == "":
                         run_success = True
@@ -512,14 +714,26 @@ class cli_handler:
                         print(f"DEBUG: {DEBUG}")
                         print(f"Operating System: {platform.platform()}")
                         print(f"Python Version: {platform.python_version()}")
+                        print(f"Python Implementation: {platform.python_implementation()}")
+                        print(f"Python Compiler: {platform.python_compiler()}")
+                        print(f"Timenow: {datetime.datetime.now()}")
                         run_success = True
                     else:
                         # Try to execute a registered command
-                        if cmd in self.registered_commands:
+                        is_alias = self.is_alias(cmd)
+                        if cmd in self.registered_commands or is_alias:
+                            cmd = self.return_alias_origin(cmd) if is_alias else cmd
+                            pass_cmd = self.registered_commands[cmd]['do_pass_cmd']
                             if self.registered_commands[cmd]['uses_args'] is True:
-                                run_success = self.registered_commands[cmd]['func'](args)
+                                if not pass_cmd:
+                                    run_success = self.registered_commands[cmd]['func'](options=options)
+                                else:
+                                    run_success = self.registered_commands[cmd]['func'](options=options, user_cmd=prompt)
                             else:
-                                run_success = self.registered_commands[cmd]['func']()
+                                if not pass_cmd:
+                                    run_success = self.registered_commands[cmd]['func']()
+                                else:
+                                    run_success = self.registered_commands[cmd]['func'](user_cmd=prompt)
 
                             if DEBUG:
                                 print(f"Command returned: {run_success}")
@@ -537,7 +751,8 @@ class cli_handler:
                     if run_success is not True:
                         print(f"{colours['red']}Error: Command not found.")
                         logging.debug(f"Command not found: {cmd}")
-                        similar = self.find_similar(cmd, ask_to_execute=True, cmd_args=args)
+                        # This does not support command kwargs.
+                        similar = self.find_similar(cmd, ask_to_execute=True, cmd_args=options['args'])
                         if similar is not None:
                             executing_similar = (True, similar['cmd'], similar['args'])
                             continue

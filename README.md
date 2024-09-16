@@ -8,19 +8,18 @@ Raindrop VCS
 </h1>
 
 # What is Raindrop?
-Raindrop is a Version Control System (VCS), similar to GitHub.<br>
+Raindrop is a decentralised Version Control System (VCS), similar to GitHub.<br>
 However, unlike GitHub, we are completely free, and we offer no premium features<br>
-because all features are available to all. So this means no project size limits for one.<br>
+because all features are available to all. So this means no project size limits on private repositories one.<br>
 
 It is also inspired by Jetbrains Space, which is a program I saw which looked very
 handy but was only available for certain groups/people. So in future implementations, I may be making my own free 
 version of it here.
 
-This is a tool primarily meant for developers, but can be used by anyone.<br>
+This is a tool primarily meant for developers, but could be used by anyone.<br>
 
 # Features / Roadmap
-If it is ticked, it is fully implemented<br>
-Raindrop has the following features: <br>
+Raindrop has/will have the following features: <br>
 
 **Implemented**
 - [x] Plugin Support
@@ -51,8 +50,8 @@ To those hosting Raindrop, I encourage you to visit the docs/hosting.md file for
 This will contain detailed, step-by-step installation data for Linux and Windows 10+ and other useful information.
 
 ## How does it work?
-Raindrop uses a system of pushes, branches and merges to manage your code, Much like GitHub.<br>
-However unlike GitHub, it does not have 'commits', you push your code, and it is saved.<br>
+Raindrop uses practically the same system that GitHub uses.<br>
+It uses a database to store all the data, and then it uses a server to host the data.<br>
 
 This has been a simple overview<br>
 For further details, see the docs/vcs.md file.

@@ -627,27 +627,18 @@ class PostgreSQL:
                 'username': 'TEXT NOT NULL REFERENCES accounts(username)',
                 'administrator': 'BOOLEAN DEFAULT FALSE',
             },
+            # The full file is stored in the commits table
             'commits': {
-                'commit_id': 'TEXT PRIMARY KEY',
+                'commit_id': 'SERIAL PRIMARY KEY',
                 'repo_id': 'INTEGER NOT NULL REFERENCES repositories(repo_id)',
-                'owner': 'TEXT NOT NULL REFERENCES accounts(username)',
-                'file_name': 'TEXT NOT NULL',
-                'file_version_id': 'TEXT NOT NULL',
-                'message': 'TEXT',
-                'timestamp': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
-                'creation_time': 'TIMESTAMP',
-                'last_modified_time': 'TIMESTAMP',
-                'size': 'INTEGER'
-            },
-            'file_versions': {
-                'file_id': 'SERIAL PRIMARY KEY',
-                'repo_id': 'INTEGER NOT NULL REFERENCES repositories(repo_id)',
-                'file_name': 'TEXT NOT NULL',
-                'version_id': 'TEXT NOT NULL',
-                'file_path': 'TEXT NOT NULL',
-                'creation_time': 'TIMESTAMP',
-                'last_modified_time': 'TIMESTAMP',
-                'size': 'INTEGER'
+                'author': 'TEXT NOT NULL REFERENCES accounts(username)',
+                'version_major': 'INTEGER NOT NULL',
+                'version_minor': 'INTEGER NOT NULL',
+                'version_patch': 'INTEGER NOT NULL',
+                'rel_file_path': 'TEXT NOT NULL',  # The relative file path. Eg, '/folder/file.txt' or '/file.txt'
+                'file_data': 'TEXT NOT NULL',  # Base64 encoded file data
+                'commit_message': 'TEXT NOT NULL DEFAULT \'No message provided\'',
+                'commit_date': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
             }
         }
 
@@ -701,6 +692,15 @@ class PostgreSQL:
         conn.commit()
 
     def save_token(self, belongs_to, token):
+        """
+        Saves a token for a user in the database.
+
+        :param belongs_to: The username of the user the token belongs to.
+        :type belongs_to: str
+        :param token: The token to save.
+        :type token: str
+        :raises AssertionError: If the username or token is not a string.
+        """
         assert type(belongs_to) is str, "The username must be a string."
         assert type(token) is str, "The token must be a string."
         # Check if the user exists
@@ -723,6 +723,15 @@ class PostgreSQL:
             conn.close()
 
     def get_token_owner(self, token):
+        """
+        Retrieves the username associated with a given token.
+
+        :param token: The token to look up.
+        :type token: str
+        :raises AssertionError: If the token is not a string.
+        :return: The username associated with the token.
+        :rtype: str
+        """
         assert type(token) is str, "The token must be a string."
         conn = self.get_connection()
         cur = conn.cursor()
@@ -741,6 +750,15 @@ class PostgreSQL:
             conn.close()
 
     def validate_token(self, token):
+        """
+        Validates if the provided token exists in the database.
+
+        :param token: The token to validate.
+        :type token: str
+        :raises AssertionError: If the token is not a string.
+        :return: True if the token is valid, False otherwise.
+        :rtype: bool
+        """
         assert type(token) is str, "The token must be a string."
         conn = self.get_connection()
         cur = conn.cursor()
@@ -759,8 +777,59 @@ class PostgreSQL:
             conn.close()
         return valid
 
+    def walk_repository(self, repo_name, repo_owner, view_private=False):
+        """
+        Constructs a dictionary of all the files, their versions, their commit msg, and their relative paths.
+        :param repo_name: The name of the repository.
+        :param repo_owner: The owner of the repository.
+        :param view_private: Whether to view private repositories.
+        :return:
+        """
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                f"""
+                SELECT version_major, version_minor, version_patch, rel_file_path, commit_message
+                FROM commits
+                WHERE repo_id = (
+                    SELECT repo_id
+                    FROM repositories
+                    WHERE name = %s AND owner = %s{';' if view_private else ' AND private = FALSE;'}
+                );
+                """,
+                (repo_name, repo_owner)
+            )
+            files = cur.fetchall()
+        finally:
+            cur.close()
+            conn.close()
+
+        files_dict = {}
+        for file in files:
+            version = [file[0], file[1], file[2]]
+            rel_file_path = file[3]
+            commit_msg = file[4]
+            files_dict[rel_file_path] = {
+                'version': version,
+                'commit_msg': commit_msg
+            }
+
+        return files_dict
+
     # TODO: Add a way for admins to create an account for a user without the user's input
-    def add_user(self, username:str, password:str):
+    def add_user(self, username: str, password: str):
+        """
+        Adds a new user to the database.
+
+        :param username: The username of the new user.
+        :type username: str
+        :param password: The password for the new user.
+        :type password: str
+        :raises AssertionError: If the username or password is not a string.
+        :return: True if the user was added successfully, False if the username already exists.
+        :rtype: bool
+        """
         assert type(username) is str, "The username must be a string."
         assert type(password) is str, "The password must be a string."
         conn = self.get_connection()
@@ -779,10 +848,17 @@ class PostgreSQL:
         finally:
             cur.close()
             conn.close()
-            return True
+        return True
 
     # TODO: Add way for user to trigger the deletion of their account
-    def delete_user(self, username:str):
+    def delete_user(self, username: str):
+        """
+        Deletes a user from the database.
+
+        :param username: The username of the user to delete.
+        :type username: str
+        :raises AssertionError: If the username is not a string.
+        """
         assert type(username) is str, "The username must be a string."
 
         # Check if the user exists
@@ -803,7 +879,41 @@ class PostgreSQL:
             cur.close()
             conn.close()
 
+    def get_repository_owner(self, repo_name, hide_private=True):
+        """
+        Retrieves the owner of a repository.
+
+        :param repo_name: The name of the repository.
+        :type repo_name: str
+        :param hide_private: If True, only considers public repositories.
+        :type hide_private: bool
+        :return: The owner of the repository.
+        :rtype: str
+        """
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                f"""
+                SELECT owner
+                FROM repositories
+                WHERE name = %s{';' if not hide_private else ' AND private = FALSE;'}
+                """,
+                (repo_name,)
+            )
+            owner = cur.fetchone()[0]
+        finally:
+            cur.close()
+            conn.close()
+        return owner
+
     def check_exists(self, username:str, not_exist_ok=False):
+        """
+        Checks if a user exists in the database.
+        :param username: The username to check.
+        :param not_exist_ok: If True, does not raise an error if the user does not exist.
+        :return:
+        """
         conn = self.get_connection()
         cur = conn.cursor()
 
@@ -833,6 +943,11 @@ class PostgreSQL:
             return True
 
     def is_user_administrator(self, username:str):
+        """
+        Checks if a user is an administrator.
+        :param username: The username to check.
+        :return: True if the user is an administrator, False otherwise.
+        """
         # Check if the user exists
         assert type(username) is str, "The username must be a string."
         self.check_exists(username)
@@ -860,6 +975,12 @@ class PostgreSQL:
 
     # TODO: Add way for user to change password
     def update_password(self, username:str, password:str):
+        """
+        Updates the password of a user.
+        :param username: The username of the user.
+        :param password: The new password.
+        :return:
+        """
         # Check if the user exists
         self.check_exists(username)
 
@@ -880,6 +1001,11 @@ class PostgreSQL:
             conn.close()
 
     def get_password(self, username:str):
+        """
+        Retrieves the password of a user.
+        :param username: The username of the user.
+        :return:
+        """
         # Check if the user exists
         self.check_exists(username)
 
@@ -1080,6 +1206,19 @@ class PostgreSQL:
                 (owner, name)
             )
             conn.commit()
+
+            # Delete all commits associated with the repository
+            cur.execute(
+                """
+                DELETE FROM commits
+                WHERE repo_id = (
+                    SELECT repo_id
+                    FROM repositories
+                    WHERE owner = %s AND name = %s
+                );
+                """,
+                (owner, name)
+            )
         finally:
             cur.close()
             conn.close()

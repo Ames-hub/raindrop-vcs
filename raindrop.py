@@ -9,14 +9,9 @@ import dotenv
 import time
 import os
 
-dotenv.load_dotenv('secrets.env')
+# TODO: Add an encryption class to encrypt data.
 
-cli = cli_handler(
-    'Raindrop',
-    is_main_cli=True,
-    use_default_cmds=True,
-    use_plugins=True
-)
+dotenv.load_dotenv('secrets.env')
 
 logging.basicConfig(
     filename=f'logs/{datetime.datetime.now().strftime("%Y-%m-%d")}.log',
@@ -25,10 +20,17 @@ logging.basicConfig(
 )
 
 class raindrop:
-    @staticmethod
-    def main():
+    def __init__(self):
+        self.cli = cli_handler(
+            'Raindrop',
+            is_main_cli=True,
+            use_default_cmds=True,
+            use_plugins=True
+        )
+
+    def main(self):
         if var.get('firstlaunch.main'):
-            raindrop.setup()
+            self.setup()
         webui_installed = webgui.docker_test()
         if not webui_installed:
             print(f"{colours['yellow']}The WebUI is not installed. Raindrop can only function as an API due to this.")
@@ -40,7 +42,7 @@ class raindrop:
         )
         API_Process.start()
 
-        cli.register_command(
+        self.cli.register_command(
             cmd='webui',
             func=webgui.cli.main,
             description='Manage the WebUI container'
@@ -57,7 +59,7 @@ class raindrop:
                 exit(1)
 
         PostgreSQL().modernize()
-        cli.main()
+        self.cli.main()
 
     @staticmethod
     def docker_test(return_only):
@@ -81,17 +83,16 @@ class raindrop:
             print(msg)
             exit(1)
 
-    @staticmethod
-    def setup():
+    def setup(self):
         print(f"{colours['green']}Welcome to Raindrop!{colours['white']}")
         print("Since this is your first time running Raindrop VCS Server, we need to set up a few things.\n")
         try:
-            advanced_mode = cli.ask_question(
+            advanced_mode = self.cli.ask_question(
                 "Do you want to the advanced setup mode? (y/n)",
                 options=['y', 'n'],
                 default='n', show_options=False
             ) == 'y'
-        except cli.exited_questioning:
+        except self.cli.exited_questioning:
             print("Exiting setup.")
             exit(0)
 
@@ -105,7 +106,7 @@ class raindrop:
             exit(1)
 
         # Try to install the webgui Nginx container
-        install_webui = cli.ask_question(
+        install_webui = self.cli.ask_question(
             "Raindrop is mainly a WebUI app. Regardless, it can function as simply an API.\n"
             "Do you want to install the WebUI? (y/n)",
             default='y',
@@ -115,13 +116,13 @@ class raindrop:
         if install_webui:
             print("Installing the WebUI container...")
             if advanced_mode:
-                use_default = cli.ask_question(
+                use_default = self.cli.ask_question(
                     "Do you want to use the default port for the WebUI? (y/n)",
                     filter_func=lambda x: x.lower() == 'y' or x.lower() == 'n',
                     default='y'
                 )
                 if not use_default:
-                    port = cli.ask_question(
+                    port = self.cli.ask_question(
                         "Enter the port you want to use for the WebUI",
                         filter_func=lambda x: x.isdigit(),
                         default='2048'
@@ -138,14 +139,14 @@ class raindrop:
                 print(f"{colours['green']}WebUI installed successfully!{colours['end']}")
 
         if advanced_mode:
-            use_default = cli.ask_question(
+            use_default = self.cli.ask_question(
                 "Do you want to use the default port for the API? (y/n)",
                 filter_func=lambda x: x.lower() == 'y' or x.lower() == 'n',
                 default='y'
             ) == 'y'
 
             if not use_default:
-                api_port = cli.ask_question(
+                api_port = self.cli.ask_question(
                     "Enter the port you want to use for the API",
                     filter_func=lambda x: x.isdigit(),
                     default=4096
@@ -158,7 +159,7 @@ class raindrop:
 
             while True:
                 if hostname in ['localhost', '127.0.0.1']:
-                    use_lanloopback = cli.ask_question(
+                    use_lanloopback = self.cli.ask_question(
                         f"{colours['yellow']}Warning: Using 'localhost' or '127.0.0.1' as the hostname"
                         f" will make the API only usable/accessible from the local machine.",
                         options=['ok', 'cancel'],
@@ -177,7 +178,7 @@ class raindrop:
             return True
 
         # While true is Retry logic
-        hostname = cli.ask_question(
+        hostname = self.cli.ask_question(
             "What is the hostname of the server?\n"
             "The hostname is the IP address or domain name of the server.\n"
             "eg, '192.168.1.114 or 'google.com'",
@@ -188,7 +189,7 @@ class raindrop:
 
         # Setup DB Credentials and container if needed
         while not os.path.exists('secrets.env'):  # Retry logic.
-            existing_db = cli.ask_question(
+            existing_db = self.cli.ask_question(
                 "A PostgreSQL database is required for Raindrop to function.\n"
                 "Do you have an existing PostgreSQL database you wish to use? (y/n)",
                 options=['y', 'n'],
@@ -196,7 +197,7 @@ class raindrop:
             ) == 'y'
 
             if existing_db is False:
-                make_new_db = cli.ask_question(
+                make_new_db = self.cli.ask_question(
                     "Do you want to create a new PostgreSQL database container?",
                     options=['y', 'n'], show_options=False,
                     default='y'
@@ -231,4 +232,4 @@ class raindrop:
 
 
 if __name__ == '__main__':
-    raindrop.main()
+    raindrop().main()

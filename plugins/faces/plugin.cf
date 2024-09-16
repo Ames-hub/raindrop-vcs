@@ -1,0 +1,7 @@
+name=faces
+description=Type a face like :3c and get a cute face back!
+aliases=:3c,:3,cutesy
+kw_options=time_to_wait-INT
+options=hell
+do_pass_cmd=True
+auto_task_timer=-1

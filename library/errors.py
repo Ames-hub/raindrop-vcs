@@ -51,3 +51,8 @@ class error:
         def __init__(self):
             self.code_number = 10
             super().__init__("Password is too short.")
+
+    class insufficient_permissions(Exception):
+        def __init__(self):
+            self.code_number = 11
+            super().__init__("You do not have sufficient permission to do that.")

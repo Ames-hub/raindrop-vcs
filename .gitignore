@@ -1,7 +1,6 @@
 __venv__
 .idea
 __pycache__
-plugins
 logs
 settings.json
 data

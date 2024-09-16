@@ -363,6 +363,7 @@ class vcs_routes:
                 'error': 'repository_name is required'
             }, 400
 
+        # TODO: Implement this function
         success = user.delete_repository(repository_name)
         return {
             'success': success
@@ -383,3 +384,19 @@ class vcs_routes:
         return {
             'exists': exists
         }, 200
+
+    @staticmethod
+    @app.route('/api/vcs/repository/walk', methods=['POST'])
+    async def walk_repository():
+        data = await quart.request.get_json()
+        repo_owner = data.get('owner', None)
+        repo_name = data.get('repo_name', None)
+
+        if not repo_name or not repo_owner:
+            return {
+                'error': 'repo_name and repo_owner are required'
+            }, 400
+
+        # Get the repository handler
+        repo = repository_handler(repo_owner, repo_name)
+        repo.walk_repo()

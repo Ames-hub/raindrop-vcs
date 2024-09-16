@@ -22,6 +22,7 @@
     font-family: Arial, sans-serif;
     margin-bottom: 10px;
     box-shadow: 5px -5px 0px 0px #1c1c1c;
+    cursor: pointer;
 }
 .repo_title {
     position: relative;
@@ -137,4 +138,23 @@
     padding: 5px;
     font-family: Arial, sans-serif;
     margin-bottom: 10px;
+}
+
+.repo_server {
+    /* Positioning */
+    position: relative;
+    float: right;
+    left: 10px;
+    top: -122px;
+
+    /* Background */
+    background-color: #00a708;
+    border: 2px solid black;
+    cursor: pointer;
+    
+    /* Size */
+    width: 7%;
+    height: 84px;
+    padding: 5px;
+    border-radius: 20px;
 }
