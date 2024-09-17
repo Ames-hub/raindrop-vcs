@@ -1,5 +1,6 @@
 import random
 import time
+
 # noinspection PyMethodMayBeStatic
 class faces:
     def __init__(self):
@@ -11,13 +12,16 @@ class faces:
         if time_to_sleep is not None:
             time.sleep(int(time_to_sleep))
 
-        request = options.get('args')[0]  # "faces :3c time_to_wait=5" triggers this and demonstrates use of a kwarg and arg
+        if len(options.get('args')) >= 1:
+            request = options.get('args')[0]  # "faces :3c time_to_wait=5" triggers this and demonstrates use of a kwarg and arg
+        else:
+            request = user_cmd
 
         # Example use of `do_pass_cmd=True` in config.
         # Whatever the user typed to init a command, you get the EXACT thing they typed. Spaces and all.
         if request == ':3' or user_cmd == ':3':
             print(">-<")
-        elif request == ':3 3:':
+        elif user_cmd == ":3 3:":
             print(":D D:")
         elif request == ':3c' or user_cmd == ':3c':
             print("^-^")
