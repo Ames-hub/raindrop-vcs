@@ -193,8 +193,6 @@ class user_login:
         Deletes a repository
         """
         PostgreSQL().delete_repository(self.username, repo_name)
-        repo_path = f'data/users/{self.username}/repositories/{repo_name}'
-        os.system(f'rm -rf {repo_path}')
 
     def walk_repository(self, repo_name):
         """

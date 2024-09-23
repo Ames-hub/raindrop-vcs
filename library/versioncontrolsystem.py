@@ -1,8 +1,5 @@
 from library.storage import PostgreSQL
 from library.errors import error
-from datetime import datetime
-import hashlib
-import os
 
 class vcs:
     """
@@ -19,7 +16,9 @@ class vcs:
 
         # Do not show if a private repository exists.
         cursor.execute(
-            'SELECT EXISTS(SELECT 1 FROM repositories WHERE owner = %s AND name = %s AND is_private = FALSE)',
+            """
+            SELECT EXISTS(SELECT 1 FROM repositories WHERE owner = %s AND name = %s AND is_private = FALSE)
+            """,
             (owner, repo_name)
         )
         exists = cursor.fetchone()[0]
@@ -95,4 +94,4 @@ class repository_handler:
         Walks the repository and returns a list of files and directories.
         :return:
         """
-        return PostgreSQL().walk_repo(self.owner, self.repo_name)
+        return PostgreSQL().walk_repository(self.owner, self.repo_name)

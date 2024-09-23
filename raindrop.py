@@ -9,8 +9,6 @@ import dotenv
 import time
 import os
 
-# TODO: Add an encryption class to encrypt data.
-
 dotenv.load_dotenv('secrets.env')
 
 logging.basicConfig(
@@ -34,6 +32,10 @@ class raindrop:
         webui_installed = webgui.docker_test()
         if not webui_installed:
             print(f"{colours['yellow']}The WebUI is not installed. Raindrop can only function as an API due to this.")
+        else:
+            if not webgui.is_running():
+                print("WebUI is not running. Starting the WebUI container...")
+                webgui.start_container()
 
         # Start the API
         API_Process = multiprocessing.Process(
@@ -48,6 +50,12 @@ class raindrop:
             description='Manage the WebUI container'
         )
 
+        self.cli.register_command(
+            cmd='postgre',
+            func=postgre_cli().main,
+            aliases=['pg', 'db', 'database', 'postgres', 'postgresql', 'storage', 'dbcli'],
+        )
+
         # Checks if the API is Actually running
         while True:
             try:
@@ -60,6 +68,10 @@ class raindrop:
 
         PostgreSQL().modernize()
         self.cli.main()
+
+        # Runs exit code
+        webgui.stop_container()
+        PostgreSQL.stop_container()
 
     @staticmethod
     def docker_test(return_only):
@@ -226,7 +238,24 @@ class raindrop:
                 print("Entering DB pairing/setup.")
                 postgre_cli().pair()
 
+        while True:
+            print(f"{colours['red']}!!! IMPORTANT SECURITY NOTICE !!!")
+            print(f"{colours['yellow']}NEVER HAND OUT THE FILE 'settings.json', 'secrets.env', AND ESPECIALLY 'private.key' TO ANYONE!")
+            print(f"{colours['yellow']}THESE FILES CONTAIN SENSITIVE INFORMATION THAT CAN BE USED TO ACCESS YOUR DATABASE AND API WITHOUT YOUR PERMISSION!")
+            does_understand = self.cli.ask_question(
+                question="Do you understand? (y/n)",
+                options=['yes', 'y', 'no', 'n'],
+                default='yes',
+                show_options=False
+            ) in ['yes', 'y']
+            if not does_understand:
+                print("Please read the above message again, and keep doing so until you understand.")
+                print("You may have to look up what the files do and why they are important or look up a word you don't understand.")
+            else:
+                break
+
         var.set('firstlaunch.main', False)
+
         print(f"{colours['green']}Setup complete!{colours['end']}")
         return True
 

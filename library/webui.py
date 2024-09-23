@@ -24,6 +24,20 @@ class webgui:
         return installed
 
     @staticmethod
+    def start_container():
+        """
+        Start the WebUI container
+        """
+        os.system('docker start raindrop-webui')
+
+    @staticmethod
+    def stop_container():
+        """
+        Stop the WebUI container
+        """
+        os.system('docker stop raindrop-webui')
+
+    @staticmethod
     def install(for_CLI=False) -> bool:
         """
         Install the webgui as a docker container named "raindrop-webui"

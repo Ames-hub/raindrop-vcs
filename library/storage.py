@@ -1,4 +1,5 @@
 from library.cmd_interface import cli_handler, colours
+from library.encryption import encryption
 from library.errors import error
 import subprocess
 import psycopg2
@@ -16,6 +17,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(filename)s - %(message)s'
 )
 
+keys = encryption()
 key_seperator = '.'
 settings_path = 'settings.json'
 DEBUG = os.environ.get('DEBUG', False)
@@ -52,6 +54,8 @@ class dt:
         "description": None,
     }
 
+
+# noinspection DuplicatedCode
 class var:
     @staticmethod
     def set(key, value, file=settings_path, dt_default=dt.SETTINGS) -> bool:
@@ -236,35 +240,52 @@ class postgre_cli:
         self.cli = cli_handler(
             "PostgreSQL",
             greet_func=self.greet_func,
+            use_plugins=False
         )
 
         self.cli.register_command(
             'pair',
             func=self.pair,
+            description="Pair with the PostgreSQL database.",
         )
 
         self.cli.register_command(
             'start',
             func=PostgreSQL.start_db,
+            description="Start the PostgreSQL database."
         )
 
         self.cli.register_command(
             'install',
-            func=PostgreSQL.make_db_container
+            func=PostgreSQL.make_db_container,
+            description="Install the PostgreSQL database."
         )
 
         self.cli.register_command(
             'test',
-            func=PostgreSQL.ping_db
+            func=PostgreSQL.ping_db,
+            description="Test the connection to the database."
         )
 
         self.cli.register_command(
             'execute',
-            func=self.query_db
+            func=self.query_db,
+            description="Execute a query on the database."
+        )
+
+        self.cli.register_command(
+            'reveal',
+            func=self.reveal_password,
+            description="Reveal the password for the database."
         )
 
     def main(self):
         self.cli.main()
+        return True
+
+    def reveal_password(self):
+        print(f"Username: {self.details['user']}")
+        print(f"Password: {PostgreSQL.get_details()['password']}")
         return True
 
     def query_db(self):
@@ -377,6 +398,8 @@ class postgre_cli:
                 else:
                     break
 
+        self.details['username'] = keys.encrypt(self.details['username'])
+        self.details['password'] = keys.encrypt(self.details['password'])
         PostgreSQL.save_details(self.details)
 
         var.set('db.external', is_external)
@@ -400,19 +423,50 @@ class postgre_cli:
 
 class PostgreSQL:
     def __init__(self):
-        self.details = PostgreSQL.get_details(postgres=True)
+        self.details = PostgreSQL.get_details()
 
         self.cli = postgre_cli()
 
         # Makes a test connection to the database
         self.ping_db()
 
+    @staticmethod
+    def stop_container():
+        """
+        Stops the PostgreSQL container.
+        """
+        subprocess.run(
+            ["docker", "stop", "raindrop-postgres"],
+            check=True,
+        )
+
     def get_connection(self) -> psycopg2.extensions.connection:
-        return psycopg2.connect(**self.details)
+        try:
+            return psycopg2.connect(**self.details)
+        except psycopg2.OperationalError as err:
+            # Try to start up the docker container for the database
+            if not PostgreSQL.start_db():
+                logging.error('Could not reach the database, and when I tried to start the PostgreSQL container, It failed.', exc_info=True)
+                raise err
+
+            msg = 'The database is starting up. Please wait.'
+            print(msg)
+            logging.info(msg)
+
+            # Wait for the database to start up
+            time_waited = 0
+            while not self.ping_db(do_print=False):
+                # If the database does not start up in 10 seconds, raise an error
+                if time_waited > 10:
+                    logging.error('The database did not start up in time.')
+                    raise err
+                time_waited += 1
+                time.sleep(1)
+            return psycopg2.connect(**self.details)
 
     def ping_db(self, do_print=False):
         try:
-            conn = self.get_connection()
+            conn = psycopg2.connect(**self.details)
             conn.close()
             if do_print:
                 print("The database is online.")
@@ -552,21 +606,21 @@ class PostgreSQL:
             logging.error('Could not create the DB user.', err)
             return False
 
-        try:
-            PostgreSQL().grant_all_perms()
-        except subprocess.CalledProcessError as err:
-            logging.error('Could not grant all permissions to the user.', err)
-            return False
-
         # Set the password in the secrets file
         PostgreSQL.save_details({
             'host': '127.0.0.1',
             'port': 5432,
             'username': 'raindrop_api',
-            'raindrop_password': raindrop_password,
-            'postgres_password': postgres_password,
+            'raindrop_password': keys.encrypt(raindrop_password),
+            'postgres_password': keys.encrypt(postgres_password),
             'database': 'raindrop'
         })
+
+        try:
+            PostgreSQL().grant_all_perms()
+        except subprocess.CalledProcessError as err:
+            logging.error('Could not grant all permissions to the user.', err)
+            return False
 
         var.set('db.external', False)
 
@@ -586,12 +640,12 @@ class PostgreSQL:
         )
 
     @staticmethod
-    def get_details(postgres=True) -> dict:
+    def get_details() -> dict:
         return {
             'host': var.get('db.host'),
             'port': var.get('db.port'),
-            'user': var.get('db.username') if not postgres else 'postgres',
-            'password': var.get('db.raindrop_password') if not postgres else var.get('db.postgres_password'),
+            'user': 'postgres',
+            'password': keys.decrypt(var.get('db.postgres_password')),
             'database': var.get('db.database')
         }
 
@@ -1116,6 +1170,7 @@ class PostgreSQL:
             cur.close()
             conn.close()
 
+    # TODO: Add way for user to make users an administrator
     def make_user_administrator(self, username):
         # Check if the user exists
         self.check_exists(username)
@@ -1136,6 +1191,7 @@ class PostgreSQL:
             cur.close()
             conn.close()
 
+    # TODO: Add way for user to remove users as administrators
     def remove_user_administrator(self, username):
         # Check if the user exists
         self.check_exists(username)
@@ -1196,17 +1252,7 @@ class PostgreSQL:
         # Check if the owner exists
         self.check_exists(owner)
 
-        # Delete the repository
         try:
-            cur.execute(
-                """
-                DELETE FROM repositories
-                WHERE owner = %s AND name = %s;
-                """,
-                (owner, name)
-            )
-            conn.commit()
-
             # Delete all commits associated with the repository
             cur.execute(
                 """
@@ -1219,6 +1265,16 @@ class PostgreSQL:
                 """,
                 (owner, name)
             )
+
+            # Delete the repository
+            cur.execute(
+                """
+                DELETE FROM repositories
+                WHERE owner = %s AND name = %s;
+                """,
+                (owner, name)
+            )
+            conn.commit()
         finally:
             cur.close()
             conn.close()

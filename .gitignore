@@ -5,3 +5,4 @@ logs
 settings.json
 data
 *.env
+private.key

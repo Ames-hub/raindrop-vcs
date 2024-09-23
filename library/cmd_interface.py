@@ -190,6 +190,7 @@ class cli_handler:
             options = {'args': keyvals.get('options', {}), 'kwargs': keyvals.get('kw_options', {})}
             cmd_aliases:list = keyvals.get('aliases', [])
             auto_task_timer:int = keyvals.get('auto_task_timer', -1)
+            expected_options_only:bool = keyvals.get('expected_options_only', False)
 
             # Check if the plugin has an automatic task to run
             if int(auto_task_timer) != -1:
@@ -228,7 +229,8 @@ class cli_handler:
                 options=options,
                 func_args=func_args,
                 aliases=cmd_aliases,
-                do_pass_cmd=do_pass_cmd
+                do_pass_cmd=do_pass_cmd,
+                expected_options_only=expected_options_only
             )
             self.register_plugin_help_func(plugin_name, help_func)
 
@@ -381,7 +383,7 @@ class cli_handler:
             response = input('>>> ').lower()
             if response not in ['n', 'no']:
                 logging.info(f'User chose to execute the similar command: \"{similar_cmd}\".')
-                return {'cmd': similar_cmd, 'options': cmd_args}
+                return {'cmd': similar_cmd, 'args': cmd_args}
             else:
                 logging.info(f'User did not execute the similar command: \"{similar_cmd}\".')
                 return None
@@ -501,22 +503,37 @@ class cli_handler:
             return self.cmds_dict
         else:
             for cmd, desc in self.cmds_dict.items():
-                cmd_has_args = len(desc['options']) != 0
+                cmd_has_args = len(desc['options']['args']) != 0
                 if cmd_has_args:
-                    args_msg = f"\nParameters: {', '.join(desc['options'])}"
+                    args_msg = f"\noptions: {', '.join(desc['options']['args'])}"
                 else:
-                    args_msg = "\nNo parameters."
+                    args_msg = "\nNo options."
                 print(f"- {cmd}: {desc['msg']}{args_msg}\n")
             try:
                 if self.use_plugins:
                     print("Plugin help commands:")
                     for plugin_name in self.cmds_dict['help']['plugins']:
                         print(f"- help {plugin_name}")
+                        # Prints their expected options
+                        plugin_options = self.cmds_dict[plugin_name]['options']['args']
+                        if len(plugin_options) > 0:
+                            print(f"  options: {', '.join(plugin_options)}")
+                        plugin_kwargs = self.cmds_dict[plugin_name]['options']['kwargs']
+                        print("  keyword options:")
+                        for key in plugin_kwargs:
+                            option_type = plugin_kwargs[key]
+                            if option_type is int:
+                                option_type = "Integer"
+                            elif option_type is str:
+                                option_type = "Text"
+                            elif option_type is bool:
+                                option_type = "True/False"
+                            print(f"    {key}: {option_type}")
             except KeyboardInterrupt:
                 pass
             return True
 
-    def help_cmd(self, options:dict):
+    def help_cmd(self, options:dict={}):
         """
         The help command. Lists all available commands or shows help for a specific plugin.
         """
@@ -582,7 +599,7 @@ class cli_handler:
                     print(f"options keys must be strings, not \"{type(key)}\"")
                     return False
                 if not expected_type.lower() in ["int", "str", "bool"]:
-                    print(f"options values must be types, eg 'INT', 'STR', 'BOOL', not \"{str(expected_type)}\"")
+                    print(f"for command \"{cmd}\" options values must be types, eg 'INT', 'STR', 'BOOL', not \"{str(expected_type)}\"")
                     return False
                 else:
                     expected_type = expected_type.lower()
@@ -599,7 +616,7 @@ class cli_handler:
         self.registered_commands[cmd]['func'] = func
         self.registered_commands[cmd]['aliases'] = aliases
         self.registered_commands[cmd]['expected_options_only'] = expected_options_only
-        self.registered_commands[cmd]['uses_args'] = options != {}
+        self.registered_commands[cmd]['uses_args'] = options != {"args": []}
         self.registered_commands[cmd]['args'] = func_args
         self.registered_commands[cmd]['do_pass_cmd'] = do_pass_cmd
         self.cmds_dict[cmd] = {'msg': description, 'options': options}
@@ -721,9 +738,25 @@ class cli_handler:
                     else:
                         # Try to execute a registered command
                         is_alias = self.is_alias(cmd)
+                        # Determines if the command IS a valid command.
                         if cmd in self.registered_commands or is_alias:
                             cmd = self.return_alias_origin(cmd) if is_alias else cmd
                             pass_cmd = self.registered_commands[cmd]['do_pass_cmd']
+                            expected_options_only = self.registered_commands[cmd]['expected_options_only']
+                            expected_only_violated = False
+
+                            if expected_options_only and len(options['args']) > 0:
+                                for attempted_arg in options['args']:
+                                    if attempted_arg not in self.cmds_dict[cmd]['options']['args']:
+                                        print(f"{colours['red']}Invalid option input: {options['args']}")
+                                        print("Please use an expected option. To see expected options, type 'help' or 'help (command)'.")
+                                        logging.error(f"Invalid arg input: {options['args']}")
+                                        expected_only_violated = True
+                                        break
+
+                            if expected_only_violated:
+                                continue
+
                             if self.registered_commands[cmd]['uses_args'] is True:
                                 if not pass_cmd:
                                     run_success = self.registered_commands[cmd]['func'](options=options)
@@ -740,6 +773,8 @@ class cli_handler:
                                 logging.debug(f"Command returned: {run_success}")
 
                             if not isinstance(run_success, bool):
+                                if DEBUG:
+                                    logging.debug(f"Function \"{self.registered_commands[cmd]['func']}\" did not return a boolean value: {run_success}")
                                 logging.warning(f"Command did not return a boolean value: {run_success}")
                                 print(f"{colours['yellow']}Command \"{cmd}\" did not return a success boolean value.")
                                 print(f"So we do not know if the command worked.")
@@ -761,7 +796,7 @@ class cli_handler:
 
                 # The below code only runs if this is a sub-CLI, Otherwise it runs the keyboard interrupt code.
                 if not self.is_main_cli:
-                    print(f"{colours['red']}Returning to main CLI...")
+                    print(f"{colours['red']}Returning...")
                     return True
             except AssertionError as err:
                 print(f"{colours['red']}{err}")

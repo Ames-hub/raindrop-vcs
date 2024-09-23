@@ -363,7 +363,6 @@ class vcs_routes:
                 'error': 'repository_name is required'
             }, 400
 
-        # TODO: Implement this function
         success = user.delete_repository(repository_name)
         return {
             'success': success
