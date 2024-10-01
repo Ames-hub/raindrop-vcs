@@ -29,6 +29,10 @@ class raindrop:
     def main(self):
         if var.get('firstlaunch.main'):
             self.setup()
+
+        # Check if Docker is installed
+        raindrop.docker_test(False)
+
         webui_installed = webgui.docker_test()
         if not webui_installed:
             print(f"{colours['yellow']}The WebUI is not installed. Raindrop can only function as an API due to this.")
@@ -220,7 +224,7 @@ class raindrop:
                 if make_new_db:
                     logging.info("The user has chosen to create a new PostgreSQL database container.")
                     print("We are now creating a new PostgreSQL database container for you.")
-                    db_make_success = PostgreSQL.make_db_container()
+                    db_make_success = PostgreSQL.make_rd_db_container()
                     if db_make_success is False:
                         print(db_msg)
                         exit(1)
@@ -249,8 +253,9 @@ class raindrop:
                 show_options=False
             ) in ['yes', 'y']
             if not does_understand:
-                print("Please read the above message again, and keep doing so until you understand.")
+                print("In that case, please read the message again, and keep doing so until you understand.")
                 print("You may have to look up what the files do and why they are important or look up a word you don't understand.")
+                time.sleep(2)
             else:
                 break
 

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Raindrop Hub</title>
+    <link rel="icon" href="/assets/img/icon.png">
+    <link rel="stylesheet" href="/assets/css/container.css">
+    <link rel="stylesheet" href="/assets/css/docker/create.css">
+    <link rel="stylesheet" href="/assets/css/left_sidebar.css">
+    <link rel="stylesheet" href="/assets/css/right_sidebar.css">
+</head>
+<body>
+    <div id="sidebar_left">
+        <img src="/assets/img/icon.png" alt="logo" id="team_logo">
+        <h1 id="panel_title">Interaction panel</h1>
+        <div id="status_detector">
+            <span id="status_text">Pending</span>
+        </div>
+        <hr>
+        <nav id="nav">
+            <!-- Makes all the tabs per <a> tag -->
+            <a id="nav_profile" href="/view/null" class="nav-link">Profile</a> <!-- Null is a placeholder to be set by the sidebar.js script. -->
+            <a id="nav_index" href="/index.html" class="nav-link">Hub</a>
+            <a id="nav_repos" href="/repositories.html" class="nav-link">Repositories</a>
+            <a id="nav_docker" href="/docker.html" class="nav-link">Docker</a>
+            <a id="nav_versioning" href="/index.html" class="nav-link">Versioning</a>
+            <a id="nav_usermanage" href="/userman.html" class="nav-link">Manage</a>
+            <script src="/assets/javascript/sidebar.js"></script>
+        </nav>
+    </div>
+    <div id="sidebar_right"></div>
+    <div id="container">
+        <h1 style="text-align: center; color: white;">Create container</h1>
+        <form id="create_container_form">
+            <label for="container_name">Container name:</label>
+            <input type="text" id="container_name" name="container_name" required>
+            <label for="container_image">Container image:</label>
+            <input type="text" id="container_image" name="container_image" required>
+            <label id="ports_input" for="container_ports">Container ports:</label>
+            <input type="text" id="container_ports" name="container_ports">
+            <label for="host_volume">Host volume:</label>
+            <input type="text" id="host_volume" name="host_volume">
+            <label for="internal_volume">Internal volume:</label>
+            <input type="text" id="internal_volume" name="internal_volume">
+            <label for="container_env">Container environment:</label>
+            <input type="text" id="container_env" name="container_env">
+            <button type="submit" id="create_container_btn">Create container</button>
+        </form>
+    </div>
+    <script src="/assets/javascript/toast.js"></script>
+    <script src="/assets/javascript/docker_create.js"></script>
+    <!--
+    <script src="/assets/javascript/AutoLoginManager.js"></script>
+    -->
+</body>
+</html>

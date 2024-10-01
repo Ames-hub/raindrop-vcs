@@ -14,7 +14,7 @@ function add_repo_to_list(repo_name, repo_desc) {
 }
 
 // TODO: Fix and bring up to date with current API
-function list_repos() {
+function list_containers() {
     const currentHost = window.location.hostname;
     const currentProtocol = window.location.protocol;
     const api_url = `${currentProtocol}//${currentHost}:2048`;
@@ -74,5 +74,5 @@ function list_repos() {
     fetchData();
 }
 
-list_repos()
-setInterval(list_repos, 120000); // Update every 2 minutes
+list_containers()
+setInterval(list_containers, 120000); // Update every 2 minutes

@@ -44,6 +44,10 @@ class dt:
             'raindrop_password': None,
             'postgres_password': None,
             'database': None
+        },
+        # This toggles what is allowed for the program to do if certain components are not available.
+        'fallbacks': {
+            'allow_local_db': True,
         }
     }
 
@@ -55,7 +59,7 @@ class dt:
     }
 
 
-# noinspection DuplicatedCode
+# noinspection DuplicatedCode,PyTypeChecker
 class var:
     @staticmethod
     def set(key, value, file=settings_path, dt_default=dt.SETTINGS) -> bool:
@@ -257,7 +261,7 @@ class postgre_cli:
 
         self.cli.register_command(
             'install',
-            func=PostgreSQL.make_db_container,
+            func=PostgreSQL.make_rd_db_container,
             description="Install the PostgreSQL database."
         )
 
@@ -446,8 +450,23 @@ class PostgreSQL:
         except psycopg2.OperationalError as err:
             # Try to start up the docker container for the database
             if not PostgreSQL.start_db():
-                logging.error('Could not reach the database, and when I tried to start the PostgreSQL container, It failed.', exc_info=True)
-                raise err
+                msg = 'Could not reach the database, and when I tried to start the PostgreSQL container, It failed.'
+                logging.error(msg, exc_info=True)
+                print(msg)
+                if var.get("fallbacks.allow_local_db") is True:
+                    print("Now attempting to pair with a newly-created local database as a fallback.")
+                    success = PostgreSQL.make_rd_db_container()
+                    # Wait a bit for the database to start up
+                    time.sleep(3)
+                    if not success:
+                        msg = 'Could not pair with a local database.'
+                        logging.error(msg)
+                        print(msg)
+                        exit(1)
+                    else:
+                        print("Successfully paired with a local database.")
+                        self.details = self.get_details()
+                        return psycopg2.connect(**self.details)
 
             msg = 'The database is starting up. Please wait.'
             print(msg)
@@ -514,11 +533,15 @@ class PostgreSQL:
         :return: True if the container was started, False if it was not started.
         """
         if var.get('db.external') is False:
-            subprocess.run(
-                ["docker", "start", "raindrop-postgres"],
-                check=True,
-            )
-            return True
+            try:
+                subprocess.run(
+                    ["docker", "start", "raindrop-postgres"],
+                    check=True,
+                )
+                return True
+            except subprocess.CalledProcessError:
+                logging.error('Could not start the container.', exc_info=True)
+                return False
         else:
             return False
 
@@ -554,7 +577,11 @@ class PostgreSQL:
             return False
 
     @staticmethod
-    def make_db_container() -> bool:
+    def make_rd_db_container() -> bool:
+        """
+        Makes a PostgreSQL container that Raindrop can use.
+        :return: True if the container was created, False if it was not created.
+        """
         # Uses docker to make a PostgreSQL container
         postgres_password = secrets.token_urlsafe(32)
 
@@ -667,6 +694,11 @@ class PostgreSQL:
                 'password': 'TEXT NOT NULL',
                 'restricted': 'BOOLEAN DEFAULT FALSE',
                 'bio': 'TEXT DEFAULT \'Feeling new? Make a bio!\'',
+            },
+            # The docker containers a user has
+            'user_containers': {
+                'container_id': 'TEXT PRIMARY KEY',
+                'owner': 'TEXT NOT NULL REFERENCES accounts(username)',
             },
             'repositories': {
                 'repo_id': 'SERIAL PRIMARY KEY',
@@ -1429,6 +1461,64 @@ class PostgreSQL:
                 (owner, name)
             )
             return cur.fetchone()
+        finally:
+            cur.close()
+            conn.close()
+
+    def list_users_docker_containers(self, username):
+        # Check if the user exists
+        self.check_exists(username)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT container_id
+                FROM user_containers
+                WHERE owner = %s;
+                """,
+                (username,)
+            )
+            data = cur.fetchall()
+            return data
+        finally:
+            cur.close()
+            conn.close()
+
+    def register_docker_container(self, username, container_id):
+        # Check if the user exists
+        self.check_exists(username)
+
+        conn = self.get_connection()
+        cur = conn.cursor()
+
+        try:
+            cur.execute(
+                """
+                INSERT INTO user_containers (container_id, owner)
+                VALUES (%s, %s);
+                """,
+                (container_id, username)
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def remove_docker_container(self, container_id):
+        conn = self.get_connection()
+        cur = conn.cursor()
+
+        try:
+            cur.execute(
+                """
+                DELETE FROM user_containers
+                WHERE container_id = %s;
+                """,
+                (container_id,)
+            )
+            conn.commit()
         finally:
             cur.close()
             conn.close()

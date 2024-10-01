@@ -56,3 +56,8 @@ class error:
         def __init__(self):
             self.code_number = 11
             super().__init__("You do not have sufficient permission to do that.")
+
+    class json_content_type_only(Exception):
+        def __init__(self):
+            self.code_number = 12
+            super().__init__("The content type is invalid. Please use 'application/json'")

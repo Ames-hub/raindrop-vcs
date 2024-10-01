@@ -4,14 +4,14 @@
     <meta charset="UTF-8">
     <title>Raindrop Hub</title>
     <link rel="icon" href="/assets/img/icon.png">
-    <link rel="stylesheet" href="/assets/css/repository.css">
     <link rel="stylesheet" href="/assets/css/container.css">
+    <link rel="stylesheet" href="/assets/css/docker.css">
     <link rel="stylesheet" href="/assets/css/left_sidebar.css">
     <link rel="stylesheet" href="/assets/css/right_sidebar.css">
 </head>
 <body>
     <div id="sidebar_left">
-        <img src="assets/img/icon.png" alt="logo" id="team_logo">
+        <img src="/assets/img/icon.png" alt="logo" id="team_logo">
         <h1 id="panel_title">Interaction panel</h1>
         <div id="status_detector">
             <span id="status_text">Pending</span>
@@ -25,36 +25,29 @@
             <a id="nav_docker" href="/docker.html" class="nav-link">Docker</a>
             <a id="nav_versioning" href="/index.html" class="nav-link">Versioning</a>
             <a id="nav_usermanage" href="/userman.html" class="nav-link">Manage</a>
-            <script src="assets/javascript/sidebar.js"></script>
+            <script src="/assets/javascript/sidebar.js"></script>
         </nav>
     </div>
-    <div id="sidebar_right">
+    <div id="sidebar_right"></div>
+    <div id="interaction_bar">
+        <a href="/docker/create.html" id="create_container_btn">Create container</a>
+        <a href="/docker/delete.html" id="delete_selected_btn">Delete Selected</a>
     </div>
     <div id="container">
-        <div id="file_explorer">
-            <div id="files_container">
-                <!-- Adds a test item to the file explorer -->
-                <a class="folder">
-                    data
-                    <p class="last_modified">2021-01-01</p>
-                    <div class="folder_svg"></div>
-                </a>
-                <a class="file">
-                    main.py
-                    <div class="file_svg"></div>
-                </a>
+        <div id="container_list">
+            <div class="docker_container">
+                <h1>Container 1</h1>
+                <button class="start_btn">Start</button>
+                <p class="container_status">Status: Running</p>
+                <p class="container_image">Image: ubuntu:latest</p>
+                <p class="container_id">ID: 1234567890</p>
+                <div class="unselected_container"></div>
             </div>
         </div>
-        <div id="file_explorer_ribbon">
-            <label id="ver_sel_label" for="version_selector" title="The selected version, defaults to latest">{{version}}</label>
-            <input type="text" id="version_selector" placeholder="version" title="Enter the version number here to switch to it">
-            <button class="FER_button" id="push_button">Push</button>
-            <button class="FER_button" id="pull_button">Pull</button>
-            <h1 id="repo_name">{{repo_name}}</h1>
-        </div>
     </div>
-    <div id="sidebar_right">
-</div>
-<script src="/assets/javascript/AutoLoginManager.js"></script>
+    <script src="/assets/javascript/docker.js"></script>
+    <!--
+    <script src="/assets/javascript/AutoLoginManager.js"></script>
+    -->
 </body>
 </html>

@@ -4,6 +4,7 @@ from library.storage import var, PostgreSQL
 from library.webui import webgui
 from library.errors import error
 import quart_cors
+import subprocess
 import functools
 import datetime
 import uvicorn
@@ -60,6 +61,13 @@ async def handle_bad_password(err: error.bad_password):
         'code': err.code_number
     }, 401
 
+@app.errorhandler(error.json_content_type_only)
+async def wrong_content_type(err: error.json_content_type_only):
+    return {
+        'error': 'Content-Type must be application/json',
+        'code': err.code_number
+    }, 500
+
 class QuartAPI:
     @staticmethod
     def run():
@@ -68,6 +76,20 @@ class QuartAPI:
             host='0.0.0.0',
             port=var.get('api.port'),
         )
+
+    @staticmethod
+    def require_json(api_function):
+        """
+        Decorator to ensure that the request content type is application/json
+        :param api_function:
+        :return:
+        """
+        @functools.wraps(api_function)
+        async def wrapper(*args, **kwargs):
+            if quart.request.content_type != 'application/json':
+                raise error.json_content_type_only
+            return await api_function(*args, **kwargs)
+        return wrapper
 
     @staticmethod
     def require_authentication(api_function):
@@ -200,6 +222,7 @@ class api_routes:
 
     @staticmethod
     @app.route('/api/login', methods=['POST'])
+    @QuartAPI.require_json
     async def login():
         data = await quart.request.get_json()
         username = data.get('username', None)
@@ -236,6 +259,7 @@ class api_routes:
 
     @staticmethod
     @app.route('/api/register', methods=['POST'])
+    @QuartAPI.require_json
     async def register():
         data = await quart.request.get_json()
         username = data.get('username', None)
@@ -268,7 +292,10 @@ class vcs_routes:
     async def commits_data():
         if quart.request.method == 'POST':
             data = await quart.request.get_json()
-            username = data.get('username', None)
+            try:
+                username = data.get('username', None)
+            except AttributeError:
+                raise error.json_content_type_only
         else:  # GET request
             username = quart.request.args.get('username', None)
 
@@ -332,6 +359,7 @@ class vcs_routes:
 
     @staticmethod
     @app.route('/api/vcs/repository/create', methods=['POST'])
+    @QuartAPI.require_json
     @QuartAPI.require_authentication
     async def create_repository(user: user_login):
         data = await quart.request.get_json()
@@ -352,6 +380,7 @@ class vcs_routes:
 
     @staticmethod
     @app.route('/api/vcs/repository/delete', methods=['POST'])
+    @QuartAPI.require_json
     @QuartAPI.require_authentication
     async def delete_repository(user: user_login):
         data = await quart.request.get_json()
@@ -386,6 +415,7 @@ class vcs_routes:
 
     @staticmethod
     @app.route('/api/vcs/repository/walk', methods=['POST'])
+    @QuartAPI.require_json
     async def walk_repository():
         data = await quart.request.get_json()
         repo_owner = data.get('owner', None)
@@ -399,3 +429,89 @@ class vcs_routes:
         # Get the repository handler
         repo = repository_handler(repo_owner, repo_name)
         repo.walk_repo()
+
+class docker_routes:
+    @staticmethod
+    @app.route('/api/docker/list', methods=['GET'])
+    @QuartAPI.require_authentication
+    async def list_containers(user: user_login):
+        return {
+            'containers': user.list_docker_containers()
+        }, 200
+
+    @staticmethod
+    @app.route('/api/docker/start', methods=['POST'])
+    @QuartAPI.require_json
+    @QuartAPI.require_authentication
+    async def start_container(user: user_login):
+        data = await quart.request.get_json()
+        container_id = data.get('container_id', None)
+
+        if not container_id:
+            return {
+                'error': 'container_id is required'
+            }, 400
+
+        success:bool = user.start_docker_container(container_id)
+        return {
+            'success': success
+        }, 200 if success else 400
+
+    @staticmethod
+    @app.route('/api/docker/stop', methods=['POST'])
+    @QuartAPI.require_json
+    @QuartAPI.require_authentication
+    async def stop_container(user: user_login):
+        data = await quart.request.get_json()
+        container_id = data.get('container_id', None)
+
+        if not container_id:
+            return {
+                'error': 'container_id is required'
+            }, 400
+
+        success:bool = user.stop_docker_container(container_id)
+        return {
+            'success': success
+        }, 200 if success else 400
+
+    @staticmethod
+    @app.route('/api/docker/create', methods=['POST'])
+    @QuartAPI.require_json
+    @QuartAPI.require_authentication
+    async def create_container(user: user_login):
+        data = await quart.request.get_json()
+
+        container_image = data.get('image', None)
+        container_name = data.get('name', 'test_container')
+        if not container_image:
+            return {
+                'error': 'image is required'
+            }, 400
+
+        success = user.create_docker_container(
+            image=container_image,
+            name=container_name,
+        )
+
+        return {
+            'success': success
+        }, 200 if success else 400
+
+    @staticmethod
+    @app.route('/api/docker/delete', methods=['POST'])
+    @QuartAPI.require_json
+    @QuartAPI.require_authentication
+    async def delete_container(user: user_login):
+        data = await quart.request.get_json()
+        container_id = data.get('container_id', None)
+
+        if not container_id:
+            return {
+                'error': 'container_id is required'
+            }, 400
+
+        success:bool = user.delete_docker_container(container_id)
+        return {
+            'success': success
+        }, 200 if success else 400

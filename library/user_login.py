@@ -1,6 +1,8 @@
 from library.storage import var, PostgreSQL, dt
 from library.errors import error
+import subprocess
 import secrets
+import json
 import os
 
 class users:
@@ -109,6 +111,7 @@ class users:
         """
         return PostgreSQL().get_bio(username)
 
+# noinspection PyMethodMayBeStatic
 class user_login:
     def __init__(self, username:str=None, password=None, token=None):
         """
@@ -199,3 +202,130 @@ class user_login:
         Walks through the repository
         """
         return PostgreSQL().walk_repository(repo_name, self.username)
+
+    def list_docker_containers(self) -> list:
+        containers_owned = PostgreSQL().list_users_docker_containers(self.username)
+        if not containers_owned:
+            return []
+
+        containers = []
+        for container_id in containers_owned:
+            try:
+                # Issues a subprocessing command to get the container's status, name, and image.
+                container_info = subprocess.run(
+                    ["docker", "inspect", container_id],
+                    capture_output=True,
+                    check=True
+                ).stdout.decode()
+
+                container_info = json.loads(container_info)
+                container_info = container_info[0]
+
+                container_name = container_info['Name']
+                container_status = container_info['State']['Status']
+                container_image = container_info['Config']['Image']
+
+                containers.append(
+                    {
+                        "id": container_id,
+                        "name": container_name,
+                        "status": container_status,  # running, stopped, etc.
+                        "image": container_image
+                    }
+                )
+
+            except subprocess.CalledProcessError as e:
+                # Handle the error (e.g., log it, raise an exception, etc.)
+                print(f"Error inspecting container {container_id}: {e}")
+
+        return containers
+
+    def create_docker_container(self, image: str, name: str) -> bool:
+        """
+        Creates a Docker container
+        """
+        try:
+            # Create the container and get the container ID
+            result = subprocess.run(
+                ["docker", "run", "-d", "--name", name, image],
+                capture_output=True,
+                check=True
+            )
+            container_id = result.stdout.decode().strip()
+
+            # Register the container in the database
+            PostgreSQL().register_docker_container(
+                username=self.username,
+                container_id=container_id
+            )
+
+            return True
+        except subprocess.CalledProcessError as err:
+            # Handle the error (e.g., log it, raise an exception, etc.)
+            print(f"Error creating container: {err}")
+            return False
+
+    def delete_docker_container(self, container_id:str) -> bool:
+        """
+        Deletes a Docker container
+        :param container_id:
+        :return:
+        """
+        try:
+            subprocess.run(
+                ["docker", "rm", "-f", container_id],
+                check=True
+            )
+        except subprocess.CalledProcessError as e:
+            # Handle the error (e.g., log it, raise an exception, etc.)
+            print(f"Error deleting container {container_id}: {e}")
+            return False
+
+        PostgreSQL().remove_docker_container(container_id)
+        return True
+
+    def start_docker_container(self, container_id:str) -> bool:
+        """
+        Starts a Docker container
+        :param container_id:
+        :return:
+        """
+        # Checks if the user has authority over the container
+        users_containers = PostgreSQL().list_users_docker_containers(self.username)
+        if container_id not in users_containers:
+            return False
+
+        try:
+            subprocess.run(
+                ["docker", "start", container_id],
+                check=True
+            )
+        except subprocess.CalledProcessError as e:
+            # Handle the error (e.g., log it, raise an exception, etc.)
+            print(f"Error starting container {container_id}: {e}")
+            return False
+
+        return True
+
+    def stop_docker_container(self, container_id:str) -> bool:
+        """
+        Stops a Docker container
+        :param container_id:
+        :return:
+        """
+        # Checks if the user has authority over the container
+        users_containers = PostgreSQL().list_users_docker_containers(self.username)
+        if container_id not in users_containers:
+            return False
+
+        try:
+            subprocess.run(
+                ["docker", "stop", container_id],
+                check=True
+            )
+        except subprocess.CalledProcessError as e:
+            # Handle the error (e.g., log it, raise an exception, etc.)
+            print(f"Error stopping container {container_id}: {e}")
+            return False
+
+        return True

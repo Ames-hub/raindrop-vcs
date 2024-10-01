@@ -1,0 +1,203 @@
+/* Over-ride container.css for the unique parts and intentions in this html file */
+#container {
+    top: -30px;
+    left: 21px;
+    height: 95dvh;
+    width: calc(100% - 196px);
+}
+
+#interaction_bar {
+    position: relative;
+    top: -10px;
+    left: 20px;
+    border-bottom: 1px solid white;
+    width: calc(100% - 192px);
+    height: 50px;
+    margin-bottom: 20px;
+    z-index: 2;
+
+    background-color: #272727;
+
+    /* Align items inside horizontally */
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+}
+
+#interaction_bar > button, #interaction_bar > a {
+    margin-right: 20px;
+    padding: 10px;
+    border-radius: 5px;
+    background-color: #666666;
+    color: white;
+    border: none; /* Remove default border */
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+#interaction_bar > a {
+    text-decoration: none;
+}
+
+#interaction_bar > button:hover {
+    background-color: #45a049; /* Darker green on hover */
+}
+
+#interaction_bar > button:active {
+    background-color: #3e8e41; /* Even darker green on click */
+}
+
+#container_list {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    /* Makes it so that when there's too much content for the div, it adds a scroll */
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.docker_container, .docker_container_darker {
+    height: 50px;
+    padding: 10px;
+}
+
+.docker_container > h1, .docker_container_darker > h1 {
+    position: relative;
+    margin: 0;
+    top: 3px;
+    left: 20px;
+    color: white;
+}
+
+.start_btn {
+    position: relative;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 10px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    float: right;
+    top: -30px;
+}
+
+.docker_container {
+    background-color: #505050;
+}
+
+.docker_container_darker {
+    background-color: #272727;
+}
+
+.unselected_container {
+    position: relative;
+    height: 72px;
+    left: -10px;
+    width: 25px;
+    top: -50px;
+    background-color: rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+}
+
+.selected_container {
+    position: relative;
+    height: 72px;
+    left: -10px;
+    width: 25px;
+    top: -50px;
+    background-color: green;
+    cursor: pointer;
+}
+
+.container_status, .container_image, .container_id {
+    position: relative;
+    color: white;
+    float: right;
+    top: -40px;
+}
+
+.container_status {
+    right: 10vw;
+}
+
+.container_image {
+    position: relative;
+    right: 15vw;
+}
+
+.container_id {
+    position: relative;
+    right: 20vw;
+}
+
+@media screen and (max-width: 1330px) {
+    .container_id, .container_image, .container_status {
+        font-size: 13px;
+        top: -35px;
+    }
+    .container_status {
+        right: 5vw;
+    }
+    .container_image {
+        right: 10vw;
+    }
+    .container_id {
+        right: 15vw;
+    }
+}
+
+@media screen and (max-width: 1230px) {
+    .container_status, .container_image, .container_id {
+        position: relative;
+        color: white;
+        float: left;
+        top: -20px;
+    }
+    .docker_container > h1, .docker_container_darker > h1 {
+        position: relative;
+        margin: 0;
+        top: -8px;
+        left: 20px;
+        color: white;
+    }
+
+    .container_status {
+        left: 25px;
+    }
+    .container_image {
+        position: relative;
+        left: 7vw;
+    }
+    .container_id {
+        position: relative;
+        left: 13vw;
+    }
+}
+
+@media screen and (max-width: 1000px) {
+    .container_image {
+        display: none;
+    }
+    .container_id {
+        left: 7vw;
+    }
+}
+
+#container_create_form {
+    position: absolute;
+    background-color: #6b6b6b;
+
+    border: 1px solid white;
+    border-radius: 20px;
+    padding: 10px;
+
+    z-index: 10;
+
+    /* Center div */
+    top: 40%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+
+    width: 35vw;
+}

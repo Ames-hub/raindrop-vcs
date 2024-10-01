@@ -84,13 +84,17 @@ function keepAliveCheck () {
 
 function sidebar_setuser() {
     var profile_title = `${localStorage.getItem('username')}`;
+    var nav_profile = document.getElementById("nav_profile");
 
     // If the profile title is greater than 15 characters, make the font size smaller.
     if (profile_title.length > 15) {
-        document.getElementById("nav_profile").style.fontSize = "10px";
+        nav_profile.style.fontSize = "10px";
     }
 
-    document.getElementById("nav_profile").innerHTML = profile_title;
+    nav_profile.innerHTML = profile_title;
+    // Sets the HREF of the profile link to the user's profile page
+    nav_profile.href = `/view/${localStorage.getItem('username')}`;
+    console.log("sidebar_setuser has ran.")
 }
 
 sidebar_setuser();
