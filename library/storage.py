@@ -495,6 +495,9 @@ class PostgreSQL:
                 print(f"The database is offline. Error: {err}")
             return False
 
+    def container_running(self):
+        return PostgreSQL.check_db_container()
+
     @staticmethod
     def query_db(query, args, do_commit=True):
         """
@@ -556,19 +559,6 @@ class PostgreSQL:
             ["docker", "inspect", "--format='{{json .State.Status}}'", "raindrop-postgres"],
             capture_output=True, text=True
         )
-
-        if not var.get("db.external") is True:
-            if result.returncode != 0:
-                # Container does not exist
-                return -1
-        else:
-            # Makes a test connection to the database
-            try:
-                conn = psycopg2.connect(**PostgreSQL.get_details())
-                conn.close()
-            except psycopg2.OperationalError:
-                return False
-            return True
 
         status = json.loads(result.stdout.strip().strip("'"))
         if status == "running":

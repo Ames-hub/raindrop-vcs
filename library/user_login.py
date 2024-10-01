@@ -2,6 +2,7 @@ from library.storage import var, PostgreSQL, dt
 from library.errors import error
 import subprocess
 import secrets
+import shlex
 import json
 import os
 
@@ -240,14 +241,26 @@ class user_login:
 
         return containers
 
-    def create_docker_container(self, image: str, name: str) -> bool:
+    def create_docker_container(self, image: str, name: str,
+                                host_port: int, internal_port: int, host_ip: str,
+                                host_volume: str, internal_volume: str,
+                                is_daemon: bool = True
+                                ) -> bool:
         """
         Creates a Docker container
         """
+        command = f"docker run {'-d' if is_daemon else ''} --name \"{name}\""
+        if host_port and internal_port:
+            command += f" -p {host_ip}:{host_port}:{internal_port}"
+        if host_volume and internal_volume:
+            command += f" -v {host_volume}:{internal_volume}"
+
+        command += f" {image}"
+
         try:
             # Create the container and get the container ID
             result = subprocess.run(
-                ["docker", "run", "-d", "--name", name, image],
+                shlex.split(command),
                 capture_output=True,
                 check=True
             )

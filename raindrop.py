@@ -41,12 +41,27 @@ class raindrop:
                 print("WebUI is not running. Starting the WebUI container...")
                 webgui.start_container()
 
+        # Ensures the DB Is running
+        if not PostgreSQL().container_running():
+            print("PostgreSQL is not running. Starting the PostgreSQL container...")
+            PostgreSQL().start_db()
+
         # Start the API
         API_Process = multiprocessing.Process(
             target=QuartAPI.run,
             name='API',
         )
         API_Process.start()
+
+        # Note: Yes, apparently this code is neccesary for visuals and shouldn't be changed like how I tried.
+        # Checks if the API is Actually running
+        while True:
+            try:
+                time.sleep(1)
+                if API_Process.is_alive():
+                    break
+            except KeyboardInterrupt:
+                exit(1)
 
         self.cli.register_command(
             cmd='webui',
@@ -60,22 +75,15 @@ class raindrop:
             aliases=['pg', 'db', 'database', 'postgres', 'postgresql', 'storage', 'dbcli'],
         )
 
-        # Checks if the API is Actually running
-        while True:
-            try:
-                time.sleep(1)
-                if API_Process.is_alive():
-                    break
-            except KeyboardInterrupt:
-                print(f"{colours['red']}Exiting Raindrop.")
-                exit(1)
-
         PostgreSQL().modernize()
-        self.cli.main()
-
-        # Runs exit code
-        webgui.stop_container()
-        PostgreSQL.stop_container()
+        try:
+            self.cli.main()
+        except KeyboardInterrupt:
+            # Runs clean up code
+            print(f"{colours['red']}Exiting Raindrop and running clean up code.")
+            webgui.stop_container()
+            PostgreSQL.stop_container()
+            return True
 
     @staticmethod
     def docker_test(return_only):
@@ -267,3 +275,5 @@ class raindrop:
 
 if __name__ == '__main__':
     raindrop().main()
+    print("Thank you for using Raindrop!")
+    exit(0)

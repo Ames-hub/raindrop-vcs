@@ -4,12 +4,14 @@ from library.storage import var, PostgreSQL
 from library.webui import webgui
 from library.errors import error
 import quart_cors
-import subprocess
 import functools
 import datetime
+import requests
 import uvicorn
 import logging
 import quart
+import sys
+import re
 import os
 
 os.makedirs('data/users/', exist_ok=True)
@@ -22,7 +24,7 @@ logging.basicConfig(
 
 # Specify the path to the templates directory
 template_dir = os.path.join(os.getcwd(), 'website/templates')
-
+DEBUG = bool(os.environ.get("DEBUG", False))
 app = quart.Quart(__name__, template_folder=template_dir)
 quart_cors.cors(app, allow_origin='*')
 
@@ -68,14 +70,31 @@ async def wrong_content_type(err: error.json_content_type_only):
         'code': err.code_number
     }, 500
 
+def docker_image_exists(image_name, tag='latest'):
+    """
+    Check if a Docker image exists in the Docker Hub registry.
+
+    :param image_name: Name of the Docker image (e.g., 'library/ubuntu')
+    :param tag: Tag of the Docker image (default is 'latest')
+    :return: True if the image exists, False otherwise
+    """
+    url = f'https://registry.hub.docker.com/v2/repositories/library/{image_name}/tags/{tag}/'
+    response = requests.head(url)
+    return response.status_code == 200
+
 class QuartAPI:
     @staticmethod
     def run():
-        uvicorn.run(
-            app,
-            host='0.0.0.0',
-            port=var.get('api.port'),
-        )
+        # Redirect stdout and stderr to /dev/null or NUL on Windows
+        with open(os.devnull, 'w') as devnull:
+            if not DEBUG:
+                sys.stdout = devnull
+                sys.stderr = devnull
+            uvicorn.run(
+                app,
+                host='0.0.0.0',
+                port=var.get('api.port'),
+            )
 
     @staticmethod
     def require_json(api_function):
@@ -482,16 +501,80 @@ class docker_routes:
     async def create_container(user: user_login):
         data = await quart.request.get_json()
 
+        container_name = data.get('name', None)
         container_image = data.get('image', None)
-        container_name = data.get('name', 'test_container')
+        host_port = data.get('host_port', None)
+        internal_port = data.get('internal_port', None)
+        host_ip = data.get('host_ip', None)
+        host_volume = data.get('host_volume', None)
+        internal_volume = data.get('internal_volume', None)
+
+        # Server-side data validation
+        # Regex makes sure the name is docker-valid and > 4 and less than < 40 characters
+        regex = r'^[a-zA-Z0-9][a-zA-Z0-9_.-]{3,39}$'
+        if not re.match(regex, container_name):
+            return {
+                'error': 'Invalid container name'
+            }, 400
+
+        # Check if the image exists
         if not container_image:
             return {
                 'error': 'image is required'
+            }, 400
+        else:
+            image_exists = docker_image_exists(image_name=container_image, tag='latest')
+            if not image_exists:
+                return {
+                    'error': 'image does not exist'
+                }, 400
+
+        # Check if the ports are valid
+        if not host_port or not internal_port:
+            return {
+                'error': 'host_port and container_port are required'
+            }, 400
+        elif not isinstance(host_port, int) or not isinstance(internal_port, int):
+            return {
+                'error': 'host_port and container_port must be integers'
+            }, 400
+
+        # Check if the host_ip is valid.
+        if host_ip is None or host_ip == '':
+            host_ip = '0.0.0.0'
+        elif not re.match(r'^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$', host_ip):
+            return {
+                'error': 'Invalid host ip address specified'
+            }, 400
+
+        # A Regex to check if the host volume is a valid path for linux and windows
+        linux_regex = r'^/([a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]*/?$'
+        windows_regex = r'^[a-zA-Z]:[\\/](?:[^\\/:*?"<>|\r\n]+[\\/])*[^\\/:*?"<>|\r\n]*$'
+
+        if host_volume and internal_volume:
+            if not re.match(linux_regex, host_volume) and not re.match(windows_regex, host_volume):
+                return {
+                    'error': 'Host volume path is invalid on both Linux and Windows'
+                }, 400
+
+            if not re.match(linux_regex, internal_volume):
+                return {
+                    'error': 'Internal volume path is invalid on Linux'
+                },
+
+        if host_volume and not internal_volume or internal_volume and not host_volume:
+            return {
+                'error': 'Both host_volume and internal_volume must be provided'
             }, 400
 
         success = user.create_docker_container(
             image=container_image,
             name=container_name,
+            internal_port=internal_port,
+            host_port=host_port,
+            host_ip=host_ip,
+            host_volume=host_volume,
+            internal_volume=internal_volume
         )
 
         return {

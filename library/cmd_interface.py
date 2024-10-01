@@ -801,7 +801,7 @@ class cli_handler:
             except AssertionError as err:
                 print(f"{colours['red']}{err}")
                 logging.error(f"Assertion Error: {err}")
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, UnicodeDecodeError):
             print(f"{colours['red']}Exiting...")
             logging.info(f"User exited the '{self.cli_name}' CLI.")
-            exit(0)
+            self.exit()
