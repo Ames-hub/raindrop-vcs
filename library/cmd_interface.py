@@ -206,6 +206,7 @@ class cli_handler:
                 def task_worker():
                     while self.running:
                         automated_task()
+                        # noinspection PyBroadException
                         try:
                             time.sleep(auto_task_timer)
                         except:
@@ -278,6 +279,7 @@ class cli_handler:
                 # kw_v = keyword-value
                 for kw_v in kw_options:
                     kw_v = kw_v.split("-")
+                    # noinspection PyBroadException
                     try:
                         option_key = kw_v[0]
                         option_type = kw_v[1]
@@ -402,8 +404,9 @@ class cli_handler:
             allow_default: bool = True,
             show_options: bool = True,
             exit_notif_msg: str = "default",
-            clear_terminal: bool = True
-    ) -> str:
+            clear_terminal: bool = False,
+            filter_func_fail_msg: str = "That input was filtered as bad.",
+    ):
         """
         Asks the user a question and returns the answer.
 
@@ -422,7 +425,8 @@ class cli_handler:
         :param show_options: If True, shows the options list.
         :param exit_notif_msg: The message to indicate how to exit questioning.
         :param clear_terminal: If True, clears the terminal before asking the question.
-        :return: The answer to the question.
+        :param filter_func_fail_msg: The message to show if the filter function returns False.
+        :return: The answer to the question in whatever form it is.
         :raises: self.exited_question if the user exits the question.
         """
         # Call validation
@@ -471,7 +475,7 @@ class cli_handler:
                     if filter_func is not None:
                         filter_result = filter_func(answer)
                         if filter_result is False:
-                            print(f"{colours['red']}That input was filtered as bad.")
+                            print(f"{colours['red']}{filter_func_fail_msg}")
                             continue
                         elif filter_result == -1:
                             # -1 is for a bad input that should be filtered but not told to the user.

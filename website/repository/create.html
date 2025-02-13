@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Raindrop Hub</title>
     <link rel="icon" href="/assets/img/icon.png">
-    <link rel="stylesheet" href="/assets/css/repository.css">
+    <link rel="stylesheet" href="/assets/css/repositories/create.css">
     <link rel="stylesheet" href="/assets/css/container.css">
     <link rel="stylesheet" href="/assets/css/left_sidebar.css">
     <link rel="stylesheet" href="/assets/css/right_sidebar.css">
@@ -31,38 +31,24 @@
     <div id="sidebar_right">
     </div>
     <div id="container">
-        <div id="interaction_bar">
-            <a id="code_btn">Code</a>
-            <a id="issues_btn">Issues</a>
-            <a id="pull_requests_btn">Pull requests</a>
-            <a id="settings_btn">Settings</a>
-        </div>
-        <h2 style="color: white;left: 5px;position: relative;">{{repo_name}}</h2>
-        <hr>
-        <div id="repo_btns_all">
-            <div id="repo_btns_R">
-                <a id="repo_clone">Clone</a>
-            </div>
-            <div id="repo_btns_L">
-                <a id="repo_branch">Master</a>
-                <a id="repo_fork">Fork</a>
-                <a id="repo_star">Star</a>
-            </div>
-        </div>
-        <div id="file_explorer">
-            <div class="folder">
-                <div class="folder_svg"></div>
-                <a href="/view/{{repo_name}}/assets" class="folder_link">assets</a>
-            </div>
-            <div class="file">
-                <div class="file_svg"></div>
-                <a href="/view/{{repo_name}}/index.html" class="file_link">index.html</a>
-            </div>
-        </div>
+        <h1 style="text-align: center; color: white;">Create Repository</h1>
+        <form id="create_repo_form">
+            <label for="repo_name">Repository name:</label>
+            <input type="text" id="repo_name" name="repo_name" required>
+            <label for="repo_desc">Description:</label>
+            <input type="text" id="repo_desc" name="repo_desc" required>
+            <label for="repo_visibility">Repository visibility:</label>
+            <select id="repo_visibility" name="repo_visibility" required>
+                <option value="public">Public</option>
+                <option value="unlisted">Unlisted (WIP)</option>
+                <option value="private">Private</option>
+            </select>
+            <button type="submit" id="create_repo_btn">Create Repository</button>
+        </form>
     </div>
-    <div id="sidebar_right">
+<div id="sidebar_right">
 </div>
-<script src="/assets/javascript/repository.js"></script>
-<!--<script src="/assets/javascript/AutoLoginManager.js"></script>-->
+<script src="/assets/javascript/repositories.js"></script>
+<script src="/assets/javascript/AutoLoginManager.js"></script>
 </body>
 </html>

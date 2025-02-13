@@ -7,6 +7,8 @@ import datetime
 import secrets
 import inspect
 import logging
+import dotenv
+import uuid
 import time
 import json
 import os
@@ -17,21 +19,28 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(filename)s - %(message)s'
 )
 
+if os.path.exists('.env'):
+    dotenv.load_dotenv('.env')
+
 keys = encryption()
 key_seperator = '.'
 settings_path = 'settings.json'
-DEBUG = os.environ.get('DEBUG', False)
+DEBUG = bool(os.environ.get('DEBUG', False))
 
 class dt:
     SETTINGS = {
         "_comment": "NEVER SHARE THIS DATA FILE TO ANYONE. DOING SO COULD MEAN BAD THINGS.",
         "hostname": "127.0.0.1",
+        "system": {
+            'password': None,
+        },
         'firstlaunch': {
             'main': True
         },
         'webgui': {
             'port': 2048,
-            'enabled': True
+            'enabled': True,
+            'is_secure': False,
         },
         'api': {
             'port': 4096,
@@ -48,14 +57,8 @@ class dt:
         # This toggles what is allowed for the program to do if certain components are not available.
         'fallbacks': {
             'allow_local_db': True,
-        }
-    }
-
-    REPO_CONFIG = {
-        "repo_id": None,
-        "version": None,
-        "repo_name": None,
-        "description": None,
+        },
+        'cli_enabled': True  # Allow the user to disable the CLI if they want to. (for some reason)
     }
 
 
@@ -267,7 +270,7 @@ class postgre_cli:
 
         self.cli.register_command(
             'test',
-            func=PostgreSQL.ping_db,
+            func=postgre_cli.ping_db_interface,
             description="Test the connection to the database."
         )
 
@@ -287,7 +290,18 @@ class postgre_cli:
         self.cli.main()
         return True
 
+    @staticmethod
+    def ping_db_interface():
+        print("Testing database connection...")
+        if PostgreSQL.ping_db():
+            print("The database is fully operational.")
+        else:
+            print("The database is offline, or otherwise not operational, or inaccessible.")
+        return True
+
     def reveal_password(self):
+        print(f"Host: {self.details['host']}")
+        print(f"Port: {self.details['port']}")
         print(f"Username: {self.details['user']}")
         print(f"Password: {PostgreSQL.get_details()['password']}")
         return True
@@ -432,7 +446,7 @@ class PostgreSQL:
         self.cli = postgre_cli()
 
         # Makes a test connection to the database
-        self.ping_db()
+        PostgreSQL.ping_db()
 
     @staticmethod
     def stop_container():
@@ -462,7 +476,7 @@ class PostgreSQL:
                         msg = 'Could not pair with a local database.'
                         logging.error(msg)
                         print(msg)
-                        exit(1)
+                        raise KeyboardInterrupt
                     else:
                         print("Successfully paired with a local database.")
                         self.details = self.get_details()
@@ -474,7 +488,7 @@ class PostgreSQL:
 
             # Wait for the database to start up
             time_waited = 0
-            while not self.ping_db(do_print=False):
+            while not PostgreSQL.ping_db(do_print=False):
                 # If the database does not start up in 10 seconds, raise an error
                 if time_waited > 10:
                     logging.error('The database did not start up in time.')
@@ -483,9 +497,10 @@ class PostgreSQL:
                 time.sleep(1)
             return psycopg2.connect(**self.details)
 
-    def ping_db(self, do_print=False):
+    @staticmethod
+    def ping_db(do_print=False):
         try:
-            conn = psycopg2.connect(**self.details)
+            conn = psycopg2.connect(**PostgreSQL.get_details())
             conn.close()
             if do_print:
                 print("The database is online.")
@@ -494,9 +509,6 @@ class PostgreSQL:
             if do_print:
                 print(f"The database is offline. Error: {err}")
             return False
-
-    def container_running(self):
-        return PostgreSQL.check_db_container()
 
     @staticmethod
     def query_db(query, args, do_commit=True):
@@ -560,7 +572,11 @@ class PostgreSQL:
             capture_output=True, text=True
         )
 
-        status = json.loads(result.stdout.strip().strip("'"))
+        try:
+            status = json.loads(result.stdout.strip().strip("'"))
+        except json.JSONDecodeError:
+            return -1
+
         if status == "running":
             return True
         else:
@@ -681,7 +697,7 @@ class PostgreSQL:
                 'user_id': 'SERIAL PRIMARY KEY',
                 'registered_on': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
                 'username': 'TEXT NOT NULL UNIQUE',
-                'password': 'TEXT NOT NULL',
+                'password': 'TEXT NOT NULL CHECK (LENGTH(password) >= 4)',
                 'restricted': 'BOOLEAN DEFAULT FALSE',
                 'bio': 'TEXT DEFAULT \'Feeling new? Make a bio!\'',
             },
@@ -690,35 +706,25 @@ class PostgreSQL:
                 'container_id': 'TEXT PRIMARY KEY',
                 'owner': 'TEXT NOT NULL REFERENCES accounts(username)',
             },
+            # Each repo ID that belongs to a user
+            'user_repos': {
+                'repo_uuid': 'TEXT PRIMARY KEY',
+                'owner': 'TEXT NOT NULL REFERENCES accounts(username)',
+            },
             'repositories': {
-                'repo_id': 'SERIAL PRIMARY KEY',
+                'repo_uuid': 'TEXT PRIMARY KEY',
                 'owner': 'TEXT NOT NULL REFERENCES accounts(username)',
                 'name': 'TEXT NOT NULL',
                 'description': 'TEXT',
-                'private': 'BOOLEAN DEFAULT FALSE',
+                'visibility': "TEXT DEFAULT 'public'",
                 'created_on': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
                 'last_updated': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
             },
             'user_permissions': {
-                'username': 'TEXT NOT NULL REFERENCES accounts(username)',
+                'username': 'TEXT PRIMARY KEY NOT NULL REFERENCES accounts(username)',
                 'administrator': 'BOOLEAN DEFAULT FALSE',
             },
-            # The full file is stored in the commits table
-            'commits': {
-                'commit_id': 'SERIAL PRIMARY KEY',
-                'repo_id': 'INTEGER NOT NULL REFERENCES repositories(repo_id)',
-                'author': 'TEXT NOT NULL REFERENCES accounts(username)',
-                'version_major': 'INTEGER NOT NULL',
-                'version_minor': 'INTEGER NOT NULL',
-                'version_patch': 'INTEGER NOT NULL',
-                'rel_file_path': 'TEXT NOT NULL',  # The relative file path. Eg, '/folder/file.txt' or '/file.txt'
-                'file_data': 'TEXT NOT NULL',  # Base64 encoded file data
-                'commit_message': 'TEXT NOT NULL DEFAULT \'No message provided\'',
-                'commit_date': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
-            }
         }
-
-        PostgreSQL.grant_all_perms()
 
         for table_name, columns in table_dict.items():
             # Check if the table exists
@@ -780,7 +786,7 @@ class PostgreSQL:
         assert type(belongs_to) is str, "The username must be a string."
         assert type(token) is str, "The token must be a string."
         # Check if the user exists
-        self.check_exists(belongs_to)
+        self.check_user_exists(belongs_to)
 
         conn = self.get_connection()
         cur = conn.cursor()
@@ -853,46 +859,6 @@ class PostgreSQL:
             conn.close()
         return valid
 
-    def walk_repository(self, repo_name, repo_owner, view_private=False):
-        """
-        Constructs a dictionary of all the files, their versions, their commit msg, and their relative paths.
-        :param repo_name: The name of the repository.
-        :param repo_owner: The owner of the repository.
-        :param view_private: Whether to view private repositories.
-        :return:
-        """
-        conn = self.get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                f"""
-                SELECT version_major, version_minor, version_patch, rel_file_path, commit_message
-                FROM commits
-                WHERE repo_id = (
-                    SELECT repo_id
-                    FROM repositories
-                    WHERE name = %s AND owner = %s{';' if view_private else ' AND private = FALSE;'}
-                );
-                """,
-                (repo_name, repo_owner)
-            )
-            files = cur.fetchall()
-        finally:
-            cur.close()
-            conn.close()
-
-        files_dict = {}
-        for file in files:
-            version = [file[0], file[1], file[2]]
-            rel_file_path = file[3]
-            commit_msg = file[4]
-            files_dict[rel_file_path] = {
-                'version': version,
-                'commit_msg': commit_msg
-            }
-
-        return files_dict
-
     # TODO: Add a way for admins to create an account for a user without the user's input
     def add_user(self, username: str, password: str):
         """
@@ -938,7 +904,7 @@ class PostgreSQL:
         assert type(username) is str, "The username must be a string."
 
         # Check if the user exists
-        self.check_exists(username)
+        self.check_user_exists(username)
 
         conn = self.get_connection()
         cur = conn.cursor()
@@ -955,7 +921,128 @@ class PostgreSQL:
             cur.close()
             conn.close()
 
-    def get_repository_owner(self, repo_name, hide_private=True):
+    def get_repo_uuid4_via_repo_name_crossref(self, repo_name: str):
+        """
+        Retrieves the cross-references between a user and repositories.
+
+        :param repo_name: The name of the repository to get the UUID4 of.
+        :return:
+        """
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT repo_uuid
+                FROM repositories
+                WHERE name = %s;
+                """,
+                (repo_name,)
+            )
+            uuid4 = cur.fetchone()[0]
+        finally:
+            cur.close()
+            conn.close()
+
+        return uuid4
+
+    def get_owner_via_uuid4_repo_crossref(self, uuid4: uuid.UUID=None):
+        """
+        Retrieves the cross-references between a user and repositories.
+
+        :param uuid4: The UUID4 of the repository to get the owner of.
+        :return:
+        """
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT owner
+                FROM user_repos
+                WHERE repo_uuid = %s;
+                """,
+                (str(uuid4),)
+            )
+            owner = cur.fetchone()[0]
+        finally:
+            cur.close()
+            conn.close()
+
+        return owner
+
+    def get_repo_name_via_uuid4_repo_crossref(self, uuid4: uuid.UUID=None):
+        """
+        Retrieves the cross-references between a user and repositories.
+
+        :param uuid4: The UUID4 of the repository to get the name of.
+        :return:
+        """
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                SELECT name
+                FROM repositories
+                WHERE repo_uuid = %s;
+                """,
+                (str(uuid4),)
+            )
+            name = cur.fetchone()[0]
+        finally:
+            cur.close()
+            conn.close()
+
+        return name
+
+    def add_uuid4_repo_crossref(self, username, repo_uuid4):
+        """
+        Adds a cross-reference between a user and a repository.
+        :param username: The username of the user.
+        :param repo_uuid4: The UUID4 of the repository.
+        """
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO user_repos (repo_uuid, owner)
+                VALUES (%s, %s)
+                """,
+                (str(repo_uuid4), username)
+            )
+            conn.commit()
+        except psycopg2.errors.UniqueViolation:
+            return False
+        finally:
+            cur.close()
+            conn.close()
+
+        return True
+
+    def remove_uuid4_repo_crossref(self, username, repo_uuid4):
+        """
+        Removes a cross-reference between a user and a repository.
+        :param username: The username of the user.
+        :param repo_uuid4: The UUID4 of the repository.
+        """
+        conn = self.get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                DELETE FROM user_repos
+                WHERE repo_uuid = %s AND owner = %s;
+                """,
+                (repo_uuid4, username)
+            )
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_repository_owner_by_repo_name(self, repo_name, hide_private=True):
         """
         Retrieves the owner of a repository.
 
@@ -973,7 +1060,7 @@ class PostgreSQL:
                 f"""
                 SELECT owner
                 FROM repositories
-                WHERE name = %s{';' if not hide_private else ' AND private = FALSE;'}
+                WHERE name = %s{'' if not hide_private else " AND visibility = 'public'"};
                 """,
                 (repo_name,)
             )
@@ -983,7 +1070,7 @@ class PostgreSQL:
             conn.close()
         return owner
 
-    def check_exists(self, username:str, not_exist_ok=False):
+    def check_user_exists(self, username:str, not_exist_ok=False):
         """
         Checks if a user exists in the database.
         :param username: The username to check.
@@ -1026,7 +1113,7 @@ class PostgreSQL:
         """
         # Check if the user exists
         assert type(username) is str, "The username must be a string."
-        self.check_exists(username)
+        self.check_user_exists(username)
 
         conn = self.get_connection()
         cur = conn.cursor()
@@ -1058,7 +1145,7 @@ class PostgreSQL:
         :return:
         """
         # Check if the user exists
-        self.check_exists(username)
+        self.check_user_exists(username)
 
         conn = self.get_connection()
         cur = conn.cursor()
@@ -1083,7 +1170,7 @@ class PostgreSQL:
         :return:
         """
         # Check if the user exists
-        self.check_exists(username)
+        self.check_user_exists(username)
 
         conn = self.get_connection()
         cur = conn.cursor()
@@ -1107,7 +1194,7 @@ class PostgreSQL:
     # TODO: Allow user to access this feature
     def set_bio(self, username, bio):
         # Check if the user exists
-        self.check_exists(username)
+        self.check_user_exists(username)
 
         conn = self.get_connection()
         cur = conn.cursor()
@@ -1127,7 +1214,7 @@ class PostgreSQL:
 
     def get_bio(self, username):
         # Check if the user exists
-        self.check_exists(username)
+        self.check_user_exists(username)
 
         conn = self.get_connection()
         cur = conn.cursor()
@@ -1151,7 +1238,7 @@ class PostgreSQL:
     # TODO: Add way for administrator to restrict users from using the service
     def is_restricted(self, username):
         # Check if the user exists
-        self.check_exists(username)
+        self.check_user_exists(username)
 
         conn = self.get_connection()
         cur = conn.cursor()
@@ -1174,7 +1261,7 @@ class PostgreSQL:
 
     def set_restricted(self, username, new_status:bool):
         # Check if the user exists
-        self.check_exists(username)
+        self.check_user_exists(username)
 
         conn = self.get_connection()
         cur = conn.cursor()
@@ -1195,7 +1282,7 @@ class PostgreSQL:
     # TODO: Add way for user to make users an administrator
     def make_user_administrator(self, username):
         # Check if the user exists
-        self.check_exists(username)
+        self.check_user_exists(username)
 
         conn = self.get_connection()
         cur = conn.cursor()
@@ -1216,7 +1303,7 @@ class PostgreSQL:
     # TODO: Add way for user to remove users as administrators
     def remove_user_administrator(self, username):
         # Check if the user exists
-        self.check_exists(username)
+        self.check_user_exists(username)
 
         conn = self.get_connection()
         cur = conn.cursor()
@@ -1235,29 +1322,39 @@ class PostgreSQL:
             conn.close()
 
     # TODO: Add way for user to trigger the creation of a repository
-    def add_repository(self, owner:str, name:str, description:str, is_private:bool):
+    def new_repository(self, owner:str, name:str, description:str, visibility:str, repo_uuid4:uuid.UUID):
         # Connect to the PostgreSQL database
         conn = psycopg2.connect(**self.get_details())
         cur = conn.cursor()
 
-        assert isinstance(is_private, bool)
-        assert isinstance(name, str)
-        assert isinstance(description, str)
-        assert isinstance(owner, str)
+        assert visibility in ['public', 'unlisted', 'private'], f"Visibility must be 'public', 'unlisted', or 'private'. Got {visibility}"
+        assert isinstance(name, str), f"The name must be a string. Got {type(name)} ({name})"
+        assert isinstance(description, str), f"The description must be a string. Got {type(description)} ({description})"
+        assert isinstance(owner, str), f"The owner must be a string. Got {type(owner)} ({owner})"
 
         # Check if the owner exists
-        self.check_exists(owner)
+        self.check_user_exists(owner)
 
         # Insert the new repository
         try:
             cur.execute(
                 """
-                INSERT INTO repositories (owner, name, description, private)
-                VALUES (%s, %s, %s, %s);
+                INSERT INTO repositories (repo_uuid, owner, name, description, visibility)
+                VALUES (%s, %s, %s, %s, %s);
                 """,
-                (owner, name, description, is_private)
+                (str(repo_uuid4), str(owner), str(name), str(description), str(visibility))
             )
             conn.commit()
+            return True
+        except psycopg2.errors.UniqueViolation:
+            return False
+        except psycopg2.errors.OperationalError:
+            return False
+        except TypeError as err:
+            print(f"Error: {err} on line {err.__traceback__.tb_lineno} in file {err.__traceback__.tb_frame.f_code.co_filename}\n"
+                  f"Data: {str(repo_uuid4), owner, name, description, visibility}\n"
+                  f"Type: {type(repo_uuid4)} ({type(str(repo_uuid4))}), {type(owner)}, {type(name)}, {type(description)}, {type(visibility)}")
+            return False
         finally:
             cur.close()
             conn.close()
@@ -1272,15 +1369,15 @@ class PostgreSQL:
         assert isinstance(owner, str)
 
         # Check if the owner exists
-        self.check_exists(owner)
+        self.check_user_exists(owner)
 
         try:
             # Delete all commits associated with the repository
             cur.execute(
                 """
                 DELETE FROM commits
-                WHERE repo_id = (
-                    SELECT repo_id
+                WHERE repo_uuid = (
+                    SELECT repo_uuid
                     FROM repositories
                     WHERE owner = %s AND name = %s
                 );
@@ -1302,27 +1399,27 @@ class PostgreSQL:
             conn.close()
 
     # TODO: Add way for user to trigger updating if its private or not
-    def update_repository_is_private(self, owner, name, is_private):
+    def update_repository_visibility(self, owner, name, visibility):
         # Connect to the PostgreSQL database
         conn = psycopg2.connect(**self.get_details())
         cur = conn.cursor()
 
-        assert isinstance(is_private, bool)
+        assert isinstance(visibility, bool)
         assert isinstance(name, str)
         assert isinstance(owner, str)
 
         # Check if the owner exists
-        self.check_exists(owner)
+        self.check_user_exists(owner)
 
         # Update the repository
         try:
             cur.execute(
                 """
                 UPDATE repositories
-                SET private = %s
+                SET visibility = %s
                 WHERE owner = %s AND name = %s;
                 """,
-                (is_private, owner, name,)
+                (visibility, owner, name,)
             )
             conn.commit()
         finally:
@@ -1340,7 +1437,7 @@ class PostgreSQL:
         assert isinstance(owner, str)
 
         # Check if the owner exists
-        self.check_exists(owner)
+        self.check_user_exists(owner)
 
         # Update the repository
         try:
@@ -1368,7 +1465,7 @@ class PostgreSQL:
         assert isinstance(owner, str)
 
         # Check if the owner exists
-        self.check_exists(owner)
+        self.check_user_exists(owner)
 
         # Update the repository
         try:
@@ -1392,7 +1489,7 @@ class PostgreSQL:
 
     def list_public_repos(self, username):
         # Check if the user exists
-        self.check_exists(username)
+        self.check_user_exists(username)
 
         conn = self.get_connection()
         cur = conn.cursor()
@@ -1402,7 +1499,7 @@ class PostgreSQL:
                 """
                 SELECT *
                 FROM repositories
-                WHERE owner = %s AND private = FALSE;
+                WHERE owner = %s AND visibility = 'public';
                 """,
                 (username,)
             )
@@ -1414,7 +1511,7 @@ class PostgreSQL:
 
     def list_private_repos(self, username):
         # Check if the user exists
-        self.check_exists(username)
+        self.check_user_exists(username)
 
         conn = self.get_connection()
         cur = conn.cursor()
@@ -1422,9 +1519,9 @@ class PostgreSQL:
         try:
             cur.execute(
                 """
-                SELECT repo_id, name, description, owner, created_on, last_updated, private
+                SELECT repo_uuid, name, description, owner, created_on, last_updated, visibility
                 FROM repositories
-                WHERE owner = %s AND private = TRUE;
+                WHERE owner = %s AND visibility = 'private';
                 """,
                 (username,)
             )
@@ -1437,14 +1534,14 @@ class PostgreSQL:
 
     def get_repo(self, owner, name):
         # Check if the user exists
-        self.check_exists(owner)
+        self.check_user_exists(owner)
 
         conn = self.get_connection()
         cur = conn.cursor()
         try:
             cur.execute(
                 """
-                SELECT repo_id, name, description, owner, created_on, last_updated, private
+                SELECT repo_uuid, name, description, owner, created_on, last_updated, visibility
                 FROM repositories
                 WHERE owner = %s AND name = %s;
                 """,
@@ -1455,9 +1552,15 @@ class PostgreSQL:
             cur.close()
             conn.close()
 
-    def list_users_docker_containers(self, username):
+    def list_users_docker_containers(self, username) -> list | None:
+        """
+        Lists all the docker containers a user has.
+
+        :param username:
+        :return: A list of the docker containers the user has.
+        """
         # Check if the user exists
-        self.check_exists(username)
+        self.check_user_exists(username)
 
         conn = self.get_connection()
         cur = conn.cursor()
@@ -1470,7 +1573,7 @@ class PostgreSQL:
                 """,
                 (username,)
             )
-            data = cur.fetchall()
+            data:list = cur.fetchall()
             return data
         finally:
             cur.close()
@@ -1478,7 +1581,7 @@ class PostgreSQL:
 
     def register_docker_container(self, username, container_id):
         # Check if the user exists
-        self.check_exists(username)
+        self.check_user_exists(username)
 
         conn = self.get_connection()
         cur = conn.cursor()

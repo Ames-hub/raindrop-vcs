@@ -122,6 +122,7 @@ delete_selected_btn.addEventListener('click', function() {
     // Confirm that the user wants to delete the selected containers
     selected_count = document.getElementsByClassName('selected_container').length
     if (selected_count === 0) {
+        toast("No containers selected!<br>Please select a container to delete by clicking on the far left tab of the container.", 5000);
         return;
     }
 

@@ -1,7 +1,8 @@
-from library.storage import var, PostgreSQL, dt
+from library.storage import var, PostgreSQL
 from library.errors import error
 import subprocess
 import secrets
+import logging
 import shlex
 import json
 import os
@@ -13,9 +14,9 @@ class users:
         Registers a user
         :return:
         """
-        assert type(username) == str, "Username must be a string."
-        assert type(password) == str, "Password must be a string."
-        if PostgreSQL().check_exists(username, not_exist_ok=True) is True:
+        assert type(username) == str, f"Username \"{username}\" must be a string, not {type(username)}."
+        assert type(password) == str, f"Password \"{password}\" must be a string, not {type(password)}."
+        if PostgreSQL().check_user_exists(username, not_exist_ok=True) is True:
             raise error.user_already_exists
         if not len(password) >= 4: raise error.password_too_short
         success = PostgreSQL().add_user(username, password)
@@ -23,14 +24,7 @@ class users:
         conn = PostgreSQL().get_connection()
         cur = conn.cursor()
 
-        cur.execute(
-            """
-            SELECT * FROM accounts
-            WHERE user_id = 1
-            """
-        )
-
-        if cur.fetchone() is None:
+        if username == 'Raindrop':
             PostgreSQL().make_user_administrator(username)
 
         cur.close()
@@ -52,7 +46,7 @@ class users:
         Checks if a user exists
         :return:
         """
-        return PostgreSQL().check_exists(username)
+        return PostgreSQL().check_user_exists(username)
 
     @staticmethod
     def get_pfp(username, dir_only=False) -> bytes | str:
@@ -62,7 +56,7 @@ class users:
         :param dir_only:  If True, returns the directory of the pfp
         :return:
         """
-        pfp_dir = f'data/users/{username}/pfp.png'
+        pfp_dir = f'data/vcs/{username}/pfp.png'
         if dir_only:
             if os.path.exists(pfp_dir):
                 return pfp_dir
@@ -86,7 +80,7 @@ class users:
         Returns the banner of the user
         :return:
         """
-        banner_dir = f'data/users/{username}/banner.png'
+        banner_dir = f'data/vcs/{username}/banner.png'
         if dir_only:
             if os.path.exists(banner_dir):
                 return banner_dir
@@ -123,7 +117,7 @@ class user_login:
         if not username is None:
             self.username = username
 
-            exists = PostgreSQL().check_exists(username)
+            exists = PostgreSQL().check_user_exists(username)
             if not exists:
                 raise error.user_nonexistant
 
@@ -141,7 +135,7 @@ class user_login:
             raise PermissionError("Either password or token must be provided.")
 
         self.is_admin = PostgreSQL().is_user_administrator(self.username)
-        self.user_config = f'data/users/{self.username}/config.json'
+        self.user_config = f'data/vcs/{self.username}/config.json'
 
     def generate_token(self):
         """
@@ -167,50 +161,38 @@ class user_login:
     def list_public_repos(self):
         return PostgreSQL().list_public_repos(self.username)
 
-    def create_repository(self, repo_name, description, is_private):
+    def create_repository(self, repo_name, description, visibility):
         """
         Register a repository in the database.
         """
-        PostgreSQL().add_repository(
+        assert type(repo_name) == str, f"Repository name must be a string, not {type(repo_name)}."
+        assert type(description) == str, f"Description must be a string, not {type(description)}."
+        assert type(visibility) == str, f"Visibility must be a string, not {type(visibility)}."
+        from library.versioncontrolsystem import VCS  # Prevents circular import
+
+        visibility:str = visibility.lower()
+        assert visibility in ['public', 'private', 'unlisted'], f"Visibility must be either 'public' or 'private', not {visibility}."
+        return VCS.create_repository(
             owner=self.username,
-            name=repo_name,
+            repo_name=repo_name,
             description=description,
-            is_private=is_private
-        )
-        repo_path = f'data/users/{self.username}/repositories/{repo_name}'
-        os.makedirs(repo_path, exist_ok=True)
-
-        # Create the .rdvcs file
-        config = dt.REPO_CONFIG
-        config["repo_id"] = repo_name
-        config["version"] = [1,0,0]  # Major, Minor, Patch
-        config["repo_name"] = repo_name
-        config["description"] = description
-
-        var.fill_json(
-            file=os.path.join(repo_path, '.rdvcs'),
-            data=config
+            visibility=visibility
         )
 
     def delete_repository(self, repo_name):
         """
         Deletes a repository
         """
-        PostgreSQL().delete_repository(self.username, repo_name)
-
-    def walk_repository(self, repo_name):
-        """
-        Walks through the repository
-        """
-        return PostgreSQL().walk_repository(repo_name, self.username)
+        return PostgreSQL().delete_repository(self.username, repo_name)
 
     def list_docker_containers(self) -> list:
-        containers_owned = PostgreSQL().list_users_docker_containers(self.username)
+        containers_owned = PostgreSQL().list_users_docker_containers(self.username)  # List of tuples if not empty
         if not containers_owned:
             return []
 
         containers = []
         for container_id in containers_owned:
+            container_id = container_id[0]
             try:
                 # Issues a subprocessing command to get the container's status, name, and image.
                 container_info = subprocess.run(
@@ -236,8 +218,7 @@ class user_login:
                 )
 
             except subprocess.CalledProcessError as e:
-                # Handle the error (e.g., log it, raise an exception, etc.)
-                print(f"Error inspecting container {container_id}: {e}")
+                logging.warning(f"Error inspecting container {container_id}: {e}")
 
         return containers
 

@@ -11,7 +11,8 @@ logging.basicConfig(
 )
 
 class encryption:
-    def __init__(self, key_file='private.key'):
+    def __init__(self, key_file='data/encryption.key'):
+        os.makedirs(os.path.dirname(key_file), exist_ok=True)
         self.key_file = key_file
         if not os.path.exists(key_file):
             self.generate_key()
@@ -45,7 +46,7 @@ class encryption:
             encrypted_message = self.fernet.encrypt(encoded_message)
             return encrypted_message.decode('utf-8')
         except cryptography.fernet.InvalidToken:
-            err_msg = "Invalid token. The message may have been tampered with or you may be using the wrong private.key file."
+            err_msg = "Invalid token. The message may have been tampered with or you may be using the wrong encryption.key file."
             print(err_msg)
             logging.error(err_msg)
         except ValueError:
@@ -59,7 +60,7 @@ class encryption:
             decrypted_message = self.fernet.decrypt(encrypted_message_bytes)
             return decrypted_message.decode('utf-8')
         except cryptography.fernet.InvalidToken:
-            err_msg = "Invalid token. The message may have been tampered with or you may be using the wrong private.key file."
+            err_msg = "Invalid token. The message may have been tampered with or you may be using the wrong encryption.key file."
             print(err_msg)
             logging.error(err_msg)
         except ValueError:

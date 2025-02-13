@@ -24,6 +24,10 @@ class webgui:
         return installed
 
     @staticmethod
+    def get_url():
+        return f"http{'s' if var.get('webui.is_secure') else ''}://{var.get('hostname')}:{var.get('webgui.port')}"
+
+    @staticmethod
     def start_container():
         """
         Start the WebUI container
@@ -37,6 +41,7 @@ class webgui:
         """
         os.system('docker stop raindrop-webui')
 
+    # TODO: Upgrade this to https / ssl
     @staticmethod
     def install(for_CLI=False) -> bool:
         """
@@ -70,6 +75,7 @@ class webgui:
                 '-v', f'{config_file}:/etc/nginx/conf.d/default.conf',
                 '--restart', 'unless-stopped', 'nginx'
             ]
+            # noinspection PyBroadException
             try:
                 subprocess.run(docker_command)
             except Exception:
@@ -106,6 +112,21 @@ class webgui:
                 func_args=(True,),
                 description='Install the WebUI container'
             )
+            webui_cli.register_command(
+                cmd='start',
+                func=webgui.cli.start_container,
+                description='Start the WebUI container'
+            )
+            webui_cli.register_command(
+                cmd='stop',
+                func=webgui.cli.stop_container,
+                description='Stop the WebUI container'
+            )
+            webui_cli.register_command(
+                cmd='url',
+                func=webgui.cli.get_url,
+                description='Get the URL of the WebUI'
+            )
 
             webui_cli.main()
 
@@ -125,3 +146,20 @@ class webgui:
                     print("The WebUI container is not currently running.")
 
             print("Type 'help' for a list of commands, and type 'exit' to return to the main CLI.")
+
+        @staticmethod
+        def stop_container():
+            webgui.stop_container()
+            print("WebUI container has been stopped.")
+            return True
+
+        @staticmethod
+        def start_container():
+            webgui.start_container()
+            print("WebUI container has been started.")
+            return True
+
+        @staticmethod
+        def get_url():
+            print(f"The WebUI is available at: {webgui.get_url()}")
+            return True

@@ -1,11 +1,15 @@
 from library.storage import var, PostgreSQL, postgre_cli
 from library.cmd_interface import cli_handler, colours
+from library.versioncontrolsystem import vmsystem, VCS
+from library.encryption import encryption
 from library.quartapi import QuartAPI
+from library.user_login import users
 from library.webui import webgui
 import multiprocessing
 import datetime
 import logging
 import dotenv
+import random
 import time
 import os
 
@@ -16,6 +20,8 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(filename)s - %(funcName)s - line %(lineno)d - %(message)s'
 )
+
+keys = encryption()
 
 class raindrop:
     def __init__(self):
@@ -30,6 +36,9 @@ class raindrop:
         if var.get('firstlaunch.main'):
             self.setup()
 
+        # Create the data folder and the users folder if it doesn't exist
+        os.makedirs(f'data/vcs/', exist_ok=True)
+
         # Check if Docker is installed
         raindrop.docker_test(False)
 
@@ -37,14 +46,23 @@ class raindrop:
         if not webui_installed:
             print(f"{colours['yellow']}The WebUI is not installed. Raindrop can only function as an API due to this.")
         else:
-            if not webgui.is_running():
-                print("WebUI is not running. Starting the WebUI container...")
-                webgui.start_container()
+            if var.get('webgui.enabled', default=True):
+                if not webgui.is_running():
+                    print("WebUI is not running. Starting the WebUI container...")
+                    webgui.start_container()
+                    print(f"WebUI is online and can be accessed at: {webgui.get_url()}")
+                else:
+                    print(f"WebUI is online and can be accessed at: {webgui.get_url()}")
+            else:
+                print(f"{colours['yellow']}The WebUI is not enabled. Raindrop can only function as an API due to this.")
 
         # Ensures the DB Is running
-        if not PostgreSQL().container_running():
+        if not PostgreSQL().check_db_container():
             print("PostgreSQL is not running. Starting the PostgreSQL container...")
             PostgreSQL().start_db()
+
+            # Modernize DB
+            PostgreSQL().modernize()
 
         # Start the API
         API_Process = multiprocessing.Process(
@@ -59,6 +77,7 @@ class raindrop:
             try:
                 time.sleep(1)
                 if API_Process.is_alive():
+                    print("WebAPI started and is now live and accessible.")
                     break
             except KeyboardInterrupt:
                 exit(1)
@@ -71,13 +90,65 @@ class raindrop:
 
         self.cli.register_command(
             cmd='postgre',
+            description='Enter the PostgreSQL CLI',
             func=postgre_cli().main,
             aliases=['pg', 'db', 'database', 'postgres', 'postgresql', 'storage', 'dbcli'],
         )
 
+        self.cli.register_command(
+            cmd='versioning',
+            description='Manage the version control system',
+            func=vmsystem.cli,
+        )
+
+        self.cli.register_command(
+            cmd='vcs',
+            aliases=['versioncontrol', 'versioncontrolsystem', 'vc'],
+            description='Create, delete, and generally manage repositories',
+            func=VCS.cli,
+        )
+
+        self.cli.register_command(
+            cmd='reveal_sys_pass',
+            description='Reveal the system raindrop account password',
+            func=self.reveal_sys_pass,
+        )
+
         PostgreSQL().modernize()
+
+        # Checks to make sure the System account (raindrop) exists
+        if not PostgreSQL().check_user_exists('Raindrop', not_exist_ok=True):
+            print("The system account 'Raindrop' does not exist. Creating the account now...")
+            sys_pass = var.get('system.password')
+            if not sys_pass is str or not sys_pass is bytes:
+                sys_pass = self.cli.ask_question(
+                    question="The system password is not set. Please set the system password now.",
+                    filter_func=lambda password: password != '' and password is not None and len(password) > 8,
+                    confirm_validity=True,
+                    default=str(random.randint(100000000000000, 999999999999999))
+                )
+
+                sys_pass = keys.encrypt(sys_pass)
+                var.set('system.password', sys_pass)
+
+            success = users.register(
+                username="Raindrop",
+                password=keys.decrypt(sys_pass),
+            )
+            if success:
+                print("The system account 'Raindrop' has been created.")
+            else:
+                print("Failed to create the system account 'Raindrop'.\n"
+                      "Some features may not work as intended.\n"
+                      "Please debug this issue to ensure the system account is created, or create it manually. (see 'docs/sys_acc.md')")
+
         try:
-            self.cli.main()
+            if var.get('cli_enabled', default=True):
+                self.cli.main()
+            else:
+                print(f"{colours['yellow']}The CLI is disabled in the settings.")
+                while True:
+                    pass  # Keeps the program running
         except KeyboardInterrupt:
             # Runs clean up code
             print(f"{colours['red']}Exiting Raindrop and running clean up code.")
@@ -106,6 +177,21 @@ class raindrop:
             logging.info(msg)
             print(msg)
             exit(1)
+
+    @staticmethod
+    def reveal_sys_pass():
+        """
+        Reveals the system password
+        :return:
+        """
+        sys_pass = var.get('system.password')
+        if sys_pass is None:
+            print("The system password is not set.")
+            return False
+
+        sys_pass = keys.decrypt(sys_pass)
+        print(f"The system password is: {sys_pass}")
+        return True
 
     def setup(self):
         print(f"{colours['green']}Welcome to Raindrop!{colours['white']}")
@@ -258,7 +344,8 @@ class raindrop:
                 question="Do you understand? (y/n)",
                 options=['yes', 'y', 'no', 'n'],
                 default='yes',
-                show_options=False
+                show_options=False,
+                clear_terminal=False
             ) in ['yes', 'y']
             if not does_understand:
                 print("In that case, please read the message again, and keep doing so until you understand.")

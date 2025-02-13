@@ -23,14 +23,16 @@ function create_container(name, image, internal_port, host_port, host_ip, host_v
     })
         .then(response => response.json())
         .then(data => {
-            console.log(data);
+            if (data.status == 200) {
+                toast('Container created successfully!');
+            }
+            else {
+                toast(`Uh oh! ${data.error}`);
+            }
         })
         .catch(error => {
             console.error('Error:', error);
-            // Assumes Toast script is loaded
-            toast(error);
         });
-
 }
 
 // Listens for create_container_btn click
@@ -63,6 +65,10 @@ document.getElementById('create_container_btn').addEventListener('click', functi
     }
     else if (container_name.length < 4) {
         toast('Container name must be at least 4 characters');
+        return;
+    }
+    else if (container_name === "raindrop-webui" || container_name === "raindrop-postgres") {
+        toast('This container name is reserved for Raindrop.', 5000);
         return;
     };
 

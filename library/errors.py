@@ -41,23 +41,67 @@ class error:
             self.code_number = 8
             super().__init__("This account is restricted from accessing API Functions.")
 
-    class repository_not_found(Exception):
-        def __init__(self, repo_name):
-            self.code_number = 9
-            self.repo_name = repo_name
-            super().__init__(f"The repository \"{repo_name}\" does not exist.")
-
     class password_too_short(Exception):
         def __init__(self):
-            self.code_number = 10
+            self.code_number = 9
             super().__init__("Password is too short.")
 
     class insufficient_permissions(Exception):
         def __init__(self):
-            self.code_number = 11
+            self.code_number = 10
             super().__init__("You do not have sufficient permission to do that.")
 
     class json_content_type_only(Exception):
         def __init__(self):
-            self.code_number = 12
+            self.code_number = 11
             super().__init__("The content type is invalid. Please use 'application/json'")
+
+    class GitCommandError(Exception):
+        def __init__(self, message):
+            self.code_number = 12
+            super().__init__(message)
+
+    class InvalidRepositoryError(Exception):
+        def __init__(self, message):
+            self.code_number = 13
+            super().__init__(message)
+
+    class RepositoryNotFound(Exception):
+        def __init__(self, message):
+            self.code_number = 14
+            super().__init__(message)
+
+    class RepositoryAlreadyExists(Exception):
+        def __init__(self, message):
+            self.code_number = 15
+            super().__init__(message)
+
+    class InvalidRepoVisibility(Exception):
+        def __init__(self, message):
+            self.code_number = 16
+            super().__init__(message)
+
+    class RDC_AlreadyExists(Exception):
+        def __init__(self, message):
+            self.code_number = 17
+            super().__init__(message)
+
+    class RDCNotFound(Exception):
+        def __init__(self, message):
+            self.code_number = 18
+            super().__init__(message)
+
+    class RDCWriteError(Exception):
+        def __init__(self, message):
+            self.code_number = 19
+            super().__init__(message)
+
+    class InvalidRDCData(Exception):
+        def __init__(self, message):
+            self.code_number = 20
+            super().__init__(message)
+
+    class InvalidVersionType(Exception):
+        def __init__(self, message):
+            self.code_number = 21
+            super().__init__(message)

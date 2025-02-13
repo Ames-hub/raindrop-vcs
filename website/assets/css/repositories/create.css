@@ -1,0 +1,52 @@
+#create_repo_form {
+    margin-top: 20px;
+    margin-bottom: 20px;
+    padding: 20px;
+    background-color: #333;
+
+    border-radius: 20px;
+
+    /* Align items in a grid */
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-gap: 20px;
+}
+
+#create_repo_form > label, #create_repo_form > input {
+    color: white;
+}
+
+#create_repo_form > label {
+    padding-top: 10px;
+}
+
+#create_repo_form > input {
+    padding: 10px;
+    border: 1px solid #333;
+    background-color: #444;
+    color: white;
+}
+
+#create_repo_btn {
+    padding: 10px;
+    background-color: #444;
+    color: white;
+    border: 1px solid #333;
+    cursor: pointer;
+    border-radius: 20px;
+    grid-column: 1 / -1; /* Exempt from the create form's grid alignment */
+    transition: background-color 0.1s;
+}
+#create_repo_btn:hover {
+    background-color: green;
+}
+#create_repo_btn:active {
+    background-color: rgb(0, 102, 0);
+}
+
+#create_repo_form > select {
+    padding: 10px;
+    border: 1px solid #333;
+    background-color: #444;
+    color: white;
+}

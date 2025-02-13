@@ -1,26 +1,5 @@
-const is_repos_html = window.location.pathname.includes("repositories.html");
-const make_first_repo_btn = document.getElementById("make_first_repo_btn");
-const creationBox = document.getElementById("create_repo_form_container");
-
-function reveal_creation_box() {
-    creationBox.style.display = "block";
-    // Stops certain buttons from being clicked when the creation box is open
-    if (is_repos_html) {
-        make_first_repo_btn.disabled = true;
-        make_first_repo_btn.style.cursor = "not-allowed";
-    }
-}
-
-function hide_creation_box() {
-    creationBox.style.display = "none";
-    if (is_repos_html) {
-        make_first_repo_btn.disabled = false;
-        make_first_repo_btn.style.cursor = "pointer";
-    }
-}
-
 // TODO: Test this code block
-function create_repo(name, description, is_private) {
+function create_repo(name, description, visibility) {
     const currentHost = window.location.hostname;
     const currentProtocol = window.location.protocol;
     const api_url = `${currentProtocol}//${currentHost}:2048`;
@@ -35,7 +14,37 @@ function create_repo(name, description, is_private) {
         body: JSON.stringify({
             'repo_name': name,
             'description': description,
-            'is_private': is_private
+            'visibility': visibility
+        })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data['error'] !== undefined) {
+                alert(data['error']);
+            } else {
+                window.location.href = `/view/${localStorage.getItem('username')}/${name}`;
+            }
+        })
+        .catch(() => {
+            alert('Error creating repo');
+        });
+}
+
+// TODO: Test this code block
+function delete_repo(name) {
+    const currentHost = window.location.hostname;
+    const currentProtocol = window.location.protocol;
+    const api_url = `${currentProtocol}//${currentHost}:2048`;
+    const token = localStorage.getItem('token');
+
+    fetch(`${api_url}/api/vcs/repository/delete`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            'repo_name': name
         })
     })
         .then(response => response.json())
@@ -47,28 +56,46 @@ function create_repo(name, description, is_private) {
             }
         })
         .catch(() => {
-            alert('Error creating repo');
+            alert('Error deleting repo');
         });
 }
 
-// If the page is "repositories.html", then this code block will be executed
-if (is_repos_html) {
-    // This code block listens for button press events for "make_first_repo_btn"
-    make_first_repo_btn.addEventListener("click", function() {
-        // Code to handle button press event for "make_first_repo_btn"
-        reveal_creation_box();
-    });
+// If page is create.html, then run this code block
+if (window.location.pathname === '/repository/create.html') {
+    const create_repo_form = document.getElementById('create_repo_form');
 
-    // This code block listens for button press events for "create_repo_btn" (inside the creation box)
-    const create_repo_btn = document.getElementById("create_repo_btn");
-    create_repo_btn.addEventListener("click", function(event) {
-        // Prevent the default form submission
-        event.preventDefault();
-        
-        // Code to handle button press event for "create_repo_btn"
-        const repoName = document.getElementById("repo_name_input").value;
-        const repoDesc = document.getElementById("repo_desc_input").value;
-        const isPrivate = document.getElementById("repo_priv_input").checked;
-        create_repo(repoName, repoDesc, isPrivate);
+    create_repo_form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const repo_name = document.getElementById('repo_name').value;
+
+        if (repo_name.includes(' ')) {
+            alert('Repository name cannot contain spaces');
+            return;
+        }
+        else if (repo_name.includes('/') || repo_name.includes('\\')) {
+            alert('Repository name cannot contain slashes');
+            return;
+        }
+        else if (repo_name === '') {
+            alert('Repository name cannot be empty');
+            return;
+        }
+
+        const repo_description = document.getElementById('repo_desc').value;
+        const visibility = document.getElementById('repo_visibility').value;
+
+        create_repo(repo_name, repo_description, visibility);
+    });
+}
+
+// If page is delete.html, then run this code block instead
+if (window.location.pathname === '/repository/delete.html') {
+    const delete_repo_form = document.getElementById('delete_repo_form');
+
+    delete_repo_form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const repo_name = document.getElementById('repo_name').value;
+
+        delete_repo(repo_name);
     });
 }

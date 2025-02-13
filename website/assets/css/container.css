@@ -4,10 +4,9 @@ body {
 
 #container {
     position: relative;
-    border: red 1px solid;
-    width: calc(100% - 210px);
+    width: calc(100% - 202px);
     height: 98dvh;
-    left: 28px;
+    left: 21px;
     z-index: 2;
 }
 
@@ -16,7 +15,7 @@ body {
         position: relative;
         width: 79.2dw;
         height: 98dvh;
-        left: 28px;
+        left: 0px;
         z-index: 2;
     }
 }

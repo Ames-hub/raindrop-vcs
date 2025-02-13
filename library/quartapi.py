@@ -1,4 +1,4 @@
-from library.versioncontrolsystem import repository_handler, vcs
+from library.versioncontrolsystem import VCS
 from library.user_login import user_login, users
 from library.storage import var, PostgreSQL
 from library.webui import webgui
@@ -14,7 +14,7 @@ import sys
 import re
 import os
 
-os.makedirs('data/users/', exist_ok=True)
+os.makedirs('data/vcs/', exist_ok=True)
 
 logging.basicConfig(
     filename=f'logs/{datetime.datetime.now().strftime("%Y-%m-%d")}.log',
@@ -25,6 +25,8 @@ logging.basicConfig(
 # Specify the path to the templates directory
 template_dir = os.path.join(os.getcwd(), 'website/templates')
 DEBUG = bool(os.environ.get("DEBUG", False))
+
+# TODO: Add SSL support
 app = quart.Quart(__name__, template_folder=template_dir)
 quart_cors.cors(app, allow_origin='*')
 
@@ -184,10 +186,7 @@ class view_routes:
     @app.route('/view/<account>/<repository>', methods=['GET'])
     async def get_repository(account, repository):
         # Just checks if the repository exists. Most backend happens else where.
-        try:
-            repository_handler(account, repository)
-        except error.repository_not_found:
-            # Responds with a 404 error if the repository does not exist
+        if not VCS.repository_exists(account, repository):
             return await quart.send_file('website/404.html'), 404
 
         # Render the repository page
@@ -358,10 +357,9 @@ class vcs_routes:
     @staticmethod
     @app.route('/api/vcs/repositories/<username>/list_public', methods=['GET'])
     async def list_public_repositories(username):
-        # Ensures the user exists
-        if not users.exists(username):
-            raise error.user_nonexistant
-        return {'public': vcs.list_pub_repositories(username)}, 200
+        if not os.path.exists(f'data/users/{username}'):
+            return {'error': 'User does not exist'}, 404
+        return {'public': VCS.list_public_repositories(username)}, 200
 
     @staticmethod
     @app.route('/api/vcs/repositories/list_all', methods=['GET'])
@@ -382,55 +380,49 @@ class vcs_routes:
     @QuartAPI.require_authentication
     async def create_repository(user: user_login):
         data = await quart.request.get_json()
+        owner = user.username
+        repo_name = data.get('repo_name')
+        description = data.get('description', '')
+        visibility = data.get('visibility', 'private')
 
-        repository_name = data.get('repo_name', None)
-        description = data.get('description', None)
-        is_private = data.get('is_private', True)
+        if not owner or not repo_name:
+            return {'error': 'Owner and repository name are required'}, 400
 
-        if not repository_name or not description:
-            return {
-                'error': 'repository_name is required'
-            }, 400
-
-        success = user.create_repository(repository_name, description, is_private)
-        return {
-            'success': success
-        }, 200 if success else 400
+        try:
+            uuid4 = VCS.create_repository(owner, repo_name, description, visibility)
+            return {'success': True, 'uuid4': uuid4}, 200
+        except error.RepositoryAlreadyExists:
+            return {'error': 'Repository already exists'}, 409
 
     @staticmethod
     @app.route('/api/vcs/repository/delete', methods=['POST'])
     @QuartAPI.require_json
     @QuartAPI.require_authentication
-    async def delete_repository(user: user_login):
+    async def delete_repository():
         data = await quart.request.get_json()
+        owner = data.get('owner')
+        repo_name = data.get('repo_name')
 
-        repository_name = data.get('repo_name', None)
+        if not owner or not repo_name:
+            return {'error': 'Owner and repository name are required'}, 400
 
-        if not repository_name:
-            return {
-                'error': 'repository_name is required'
-            }, 400
-
-        success = user.delete_repository(repository_name)
-        return {
-            'success': success
-        }, 200 if success else 400
+        try:
+            success = VCS.delete_repository(owner, repo_name)
+            return {'success': success}, 200
+        except error.RepositoryNotFound:
+            return {'error': 'Repository not found'}, 404
 
     @staticmethod
     @app.route('/api/vcs/repository/exists', methods=['GET'])
     async def repository_exists():
-        repo_name = quart.request.args.get('repo_name', None)
-        owner = quart.request.args.get('owner', None)
+        owner = quart.request.args.get('owner')
+        repo_name = quart.request.args.get('repo_name')
 
-        if not repo_name or not owner:
-            return {
-                'error': 'repo_name and owner are required'
-            }, 400
+        if not owner or not repo_name:
+            return {'error': 'Owner and repository name are required'}, 400
 
-        exists = vcs.repository_exists(owner, repo_name)
-        return {
-            'exists': exists
-        }, 200
+        exists = VCS.repository_exists(owner, repo_name)
+        return {'exists': exists}, 200
 
     @staticmethod
     @app.route('/api/vcs/repository/walk', methods=['POST'])
@@ -441,13 +433,38 @@ class vcs_routes:
         repo_name = data.get('repo_name', None)
 
         if not repo_name or not repo_owner:
-            return {
-                'error': 'repo_name and repo_owner are required'
-            }, 400
+            return {'error': 'repo_name and repo_owner are required'}, 400
 
-        # Get the repository handler
-        repo = repository_handler(repo_owner, repo_name)
-        repo.walk_repo()
+        try:
+            repo = VCS(repo_owner, repo_name)
+            repo_structure = repo.walk_repo()
+            return repo_structure, 200
+        except error.RepositoryNotFound:
+            return {'error': 'Repository not found'}, 404
+
+    @staticmethod
+    @app.route('/api/vcs/get_repo_version', methods=['POST'])
+    @QuartAPI.require_json
+    @QuartAPI.require_authentication
+    async def get_repo_version(user: user_login):
+        data = await quart.request.get_json()
+        repo_owner = data.get('repo_owner', None)
+        repo_name = data.get('repo_name', None)
+
+        if repo_owner != user.username:
+            # TODO: Make this allow collaborators to repo's. Also I need to add collaborators as a feature.
+            if not user.is_admin:
+                return {'error': 'You do not have permission to access this repository'}, 403
+
+        if not repo_name or not repo_owner:
+            return {'error': 'repo_name and repo_owner are required'}, 400
+
+        try:
+            repo = VCS(repo_owner, repo_name)
+            version = repo.get_version()
+            return {'version': version}, 200
+        except error.RepositoryNotFound:
+            return {'error': 'Repository not found'}, 404
 
 class docker_routes:
     @staticmethod
@@ -501,7 +518,7 @@ class docker_routes:
     async def create_container(user: user_login):
         data = await quart.request.get_json()
 
-        container_name = data.get('name', None)
+        container_name:str = data.get('name', None)
         container_image = data.get('image', None)
         host_port = data.get('host_port', None)
         internal_port = data.get('internal_port', None)
@@ -512,9 +529,21 @@ class docker_routes:
         # Server-side data validation
         # Regex makes sure the name is docker-valid and > 4 and less than < 40 characters
         regex = r'^[a-zA-Z0-9][a-zA-Z0-9_.-]{3,39}$'
-        if not re.match(regex, container_name):
+        if not container_name:
+            return {
+                'error': 'name is required'
+            }, 400
+        elif not type(container_name) is str:
+            return {
+                'error': 'The name must be text.'
+            }, 400
+        elif not re.match(regex, container_name):
             return {
                 'error': 'Invalid container name'
+            }, 400
+        elif container_name.lower() == 'raindrop-postgres' or container_name.lower() == 'raindrop-webui':
+            return {
+                'error': 'This container name is reserved for system use'
             }, 400
 
         # Check if the image exists
