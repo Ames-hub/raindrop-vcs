@@ -63,11 +63,12 @@ both the API and Raindrop.<br>Most routers support this, and if they do not, you
 ## Manually editing settings
 If you need to manually edit settings, you can do so by editing the `settings.json` file in root dir.<br>
 NOTE: NEVER SHARE THE SETTINGS.JSON FILE! It contains sensitive information.
-In the future, this information will be encrypted using cryptography. But for now, it is plaintext.
+This information is encrypted using cryptography, but regardless, it is not recommended to share it.
 
 ## Updating Raindrop (unimplemented)
 Raindrop automatically alerts you when an update is available.<br>
-To update, in the Raindrop CLI, simply enter `raindrop` then `update`<br><br>
+To update, in the Raindrop CLI, simply enter `settings` then `update`<br>
+
 You can set this to automatically run.
 However, you can also update using git if that is configured. Just make sure your extra files are not deleted by it.
 The point of the update command is to ensure that the update is done without erasing needed files.

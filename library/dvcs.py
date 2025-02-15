@@ -1,11 +1,9 @@
 from library.cmd_interface import cli_handler
-from library.storage import PostgreSQL
-from library.user_login import users
 from library.errors import error
 import datetime
+import sqlite3
 import shutil
 import uuid
-import git
 import os
 
 def greet_func():
@@ -23,13 +21,13 @@ versioning_cli = cli_handler(
 
 class vmsystem:
     """
-    Version Memory/Management System for a repository.
+    Version Memory/Management System for an existing repository.
     """
-    def __init__(self, owner, repo_uuid4):
-        self.db = PostgreSQL()
+    def __init__(self, owner, repo_name:str):
+        self.repo_name = repo_name
         self.owner = owner
-        self.repo_uuid4 = repo_uuid4
-        rd_config().exists(owner, repo_uuid4)
+        if not rd_config(repo_owner=owner, repo_name=repo_name).exists():
+            raise error.RDCNotFound(f"RDC not found for {repo_name}. Does the repository exist?")
 
     @staticmethod
     def cli():
@@ -56,9 +54,9 @@ class vmsystem:
         :return: True if successful, False if not
         """
         # Get the current version
-        repo_name = self.db.get_repo_name_via_uuid4_repo_crossref(self.repo_uuid4)
-        rdc = rd_config().read(self.owner, repo_name)
-        version = [int(rdc['v_major']), int(rdc['v_minor']), int(rdc['v_patch'])]
+        rdc = rd_config(repo_owner=self.owner, repo_name=self.repo_name)
+        rdc_data = rdc.read_cfg()
+        version = [int(rdc_data['v_major']), int(rdc_data['v_minor']), int(rdc_data['v_patch'])]
 
         if amount_lines_changed is not None:
             # Extrapolate the release type
@@ -87,9 +85,9 @@ class vmsystem:
             raise error.InvalidVersionType(f"Invalid version type: {ver_type['inttype']}")
 
         # Update the version in the RDC file
-        rd_config().update('v_major', version[0], repo_name, self.owner)
-        rd_config().update('v_minor', version[1], repo_name, self.owner)
-        rd_config().update('v_patch', version[2], repo_name, self.owner)
+        rdc.update('v_major', version[0], self.repo_name, self.owner)
+        rdc.update('v_minor', version[1], self.repo_name, self.owner)
+        rdc.update('v_patch', version[2], self.repo_name, self.owner)
 
         return True
 
@@ -137,33 +135,55 @@ class vmsystem:
             if ver_type is None:
                 return False
 
-            repo_uuid4 = PostgreSQL().get_repo_uuid4_via_repo_name_crossref(repo_name)
-
-            vmsystem(owner=owner, repo_uuid4=repo_uuid4).increment_version(ver_type=ver_type)
+            vmsystem(owner=owner, repo_name=repo_name).increment_version(ver_type=ver_type)
             print("Version added.")
             return True
 
 class rd_config:
-    def __init__(self):
+    """
+    Raindrop Configuration System for a repository.
+    Manages the entire .rdc directory within a repository and its contents.
+    """
+    def __init__(self, repo_owner:str, repo_name:str):
         self.rdc_file = None
+        self.repo_owner = repo_owner
+        self.repo_name = repo_name
 
-    def exists(self, owner, repo_name=None, repo_uuid4=None) -> bool:
-        if repo_uuid4 is not None and repo_name is None:
-            # Get the repo name from the database
-            repo_name = PostgreSQL().get_repo_name_via_uuid4_repo_crossref()
+    def write_commit(self, semver, line_content, line_number, author, commit_date=None):
+        """
+        Write a commit to the database file.
 
-        self.rdc_file = f'data/vcs/{owner}/repositories/{repo_name}/.rdc'
+        :param semver: The semantic version of the commit
+        :param line_content: The content of the line changed
+        :param line_number: The line number of the line changed
+        :param author: The author of the commit
+        :param commit_date: The date of the commit
+        :return:
+        """
+        db_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/vcs.rd'
+        conn = sqlite3.connect(db_file)
+        cur = conn.cursor()
+
+        commit_date = str(commit_date) if commit_date is not None else str(datetime.datetime.now())
+
+        cur.execute(
+            f"INSERT INTO commits VALUES (?, ?, ?, ?, ?)",
+            (semver, line_content, line_number, author, commit_date)
+        )
+
+        conn.commit()
+
+    def exists(self) -> bool:
+        self.rdc_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/cfg'
         return os.path.exists(self.rdc_file)
 
-    def read(self, owner, repo_name) -> dict:
+    def read_cfg(self) -> dict:
         """
         Read the RDC file for a repository.
 
-        :param owner:
-        :param repo_name:
         :return:
         """
-        self.rdc_file = f'data/vcs/{owner}/repositories/{repo_name}/.rdc'
+        self.rdc_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/cfg'
         with open(self.rdc_file, 'r') as f:
             data = f.read()
 
@@ -184,14 +204,31 @@ class rd_config:
 
         return rdc_dict
 
-    def write(self, repo_owner, repo_name, description, visibility) -> uuid.UUID:
+    def read_db(self, table_name:str) -> list:
         """
-        Write a new RDC file for a repository.
+        Read the database file for a repository.
+
+        :param table_name: The name of the table to read from.
+        :return:
+        """
+        db_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/vcs.rd'
+        conn = sqlite3.connect(db_file)
+        cur = conn.cursor()
+
+        cur.execute(f"SELECT * FROM {table_name}")
+        data = cur.fetchall()
+
+        # Arrange the data into a list of dictionaries
+        data = [dict(zip([desc[0] for desc in cur.description], row)) for row in data]
+
+        return data
+
+    def register(self, description, visibility) -> uuid.UUID:
+        """
+        Register a new RDC file for a repository by writing its configuration to a file.
         This function will also add the UUID to the PostgreSQL database.
         This is not to be used for updating an existing RDC file.
 
-        :param repo_owner:
-        :param repo_name:
         :param description:
         :param visibility:
         :return:
@@ -200,21 +237,21 @@ class rd_config:
             raise error.InvalidRepoVisibility(f"Invalid visibility {visibility}")
 
         if self.rdc_file is None:
-            self.rdc_file = f'data/vcs/{repo_owner}/repositories/{repo_name}/.rdc'
+            self.rdc_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/cfg'
+            os.makedirs(os.path.dirname(self.rdc_file), exist_ok=True)
 
         if os.path.exists(self.rdc_file):
-            raise error.RDC_AlreadyExists(f"RDC already exists for {repo_name}")
+            raise error.RDC_AlreadyExists(f"RDC already exists for {self.repo_name}")
 
         # Parse the description to allow for any/all problematic characters.
         description = description.replace("\n", "<br>")
 
         UUID = uuid.uuid4()
-        PostgreSQL().add_uuid4_repo_crossref(repo_owner, UUID)
 
         try:
             with open(self.rdc_file, 'w') as f:
-                f.write(f"owner={repo_owner}\n")
-                f.write(f"name={repo_name}\n")
+                f.write(f"owner={self.repo_owner}\n")
+                f.write(f"name={self.repo_name}\n")
                 f.write(f"description={description}\n")
                 f.write(f"uuid={UUID}\n")
                 f.write(f"visibility={visibility}\n")
@@ -225,6 +262,27 @@ class rd_config:
                 f.write(f"v_patch=0\n")
         except Exception as e:
             raise error.RDCWriteError(f"Failed to write to RDC: {e}")
+
+        # Create the sqlite3 db file
+        db_file = f"data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/vcs.rd"
+
+        conn = sqlite3.connect(db_file)
+        cur = conn.cursor()
+
+        table_dict = {
+            "commits": {
+                "Semver": "TEXT NOT NULL PRIMARY KEY",
+                "line_content": "TEXT NOT NULL",
+                "line_number": "INTEGER NOT NULL",
+                "author": "TEXT NOT NULL",
+                "commit_date": "TEXT NOT NULL",
+            },
+        }
+
+        for table_name, table_columns in table_dict.items():
+            cur.execute(f"CREATE TABLE {table_name} ({', '.join([f'{k} {v}' for k, v in table_columns.items()])})")
+
+        conn.commit()
 
         return UUID
 
@@ -239,7 +297,7 @@ class rd_config:
         :return:
         """
         if self.rdc_file is None:
-            self.rdc_file = f'data/vcs/{repo_owner}/repositories/{repo_name}/.rdc'
+            self.rdc_file = f'data/vcs/{repo_owner}/repositories/{repo_name}/.rdc/cfg'
 
         if not os.path.exists(self.rdc_file):
             raise error.RDCNotFound(f"RDC not found for {repo_name}")
@@ -285,24 +343,42 @@ class VCS:
         self.owner = owner
         self.repo_name = repo_name
 
-        if not os.path.exists(self.repo_path):
+        if not self.repository_exists(owner, repo_name):
             raise error.RepositoryNotFound(f"Repository {repo_name} not found for {owner}")
 
-        try:
-            self.repo = git.Repo(self.repo_path)
-        except git.exc.InvalidGitRepositoryError:
-            raise error.InvalidRepositoryError(f"Invalid Git repository at {self.repo_path}")
-
     @staticmethod
-    def list_public_repositories(owner):
-        repos_dir = f'data/vcs/{owner}/repositories/'
-        if not os.path.exists(repos_dir):
-            return []
-        return [repo for repo in os.listdir(repos_dir) if os.path.isdir(os.path.join(repos_dir, repo))]
+    def list_public_repositories(owner=None):
+        if owner is None:
+            base_dir = 'data/vcs/'
+            all_repos = {}
+            if not os.path.exists(base_dir):
+                return all_repos
+            for user in os.listdir(base_dir):
+                user_dir = os.path.join(base_dir, user, 'repositories')
+                if os.path.exists(user_dir):
+                    for repo in os.listdir(user_dir):
+                        if os.path.isdir(os.path.join(user_dir, repo)):
+                            rdc_data = rd_config(user, repo).read_cfg()
+                            if rdc_data['visibility'] == 'public':
+                                all_repos[repo] = rdc_data.get('description', 'No description')
+            return all_repos
+        else:
+            repos_dir = f'data/vcs/{owner}/repositories/'
+            if not os.path.exists(repos_dir):
+                return {}
+
+            all_repos = {}
+            for repo in os.listdir(repos_dir):
+                if os.path.isdir(os.path.join(repos_dir, repo)):
+                    rdc_data = rd_config(owner, repo).read_cfg()
+                    if rdc_data['visibility'] == 'public':
+                        all_repos[repo] = rdc_data.get('description', 'No description')
+
+            return all_repos
 
     @staticmethod
     def repository_exists(owner, repo_name):
-        return os.path.exists(f'data/vcs/{owner}/repositories/{repo_name}/.rdc')
+        return os.path.exists(f'data/vcs/{owner}/repositories/{repo_name}/.rdc/cfg')
 
     @staticmethod
     def create_repository(owner, repo_name, description='', visibility='private') -> uuid.UUID:
@@ -310,20 +386,8 @@ class VCS:
         if os.path.exists(repo_path):
             raise error.RepositoryAlreadyExists(f"Repository {repo_name} already exists for {owner}")
         os.makedirs(repo_path, exist_ok=True)
-        git.Repo.init(repo_path)
 
-        UUID4 = rd_config().write(
-            repo_owner=owner,
-            repo_name=repo_name,
-            description=description,
-            visibility=visibility,
-        )
-
-        # Add to the PostgreSQL database
-        PostgreSQL().new_repository(
-            repo_uuid4=UUID4,
-            owner=owner,
-            name=repo_name,
+        UUID4 = rd_config(owner, repo_name).register(
             description=description,
             visibility=visibility,
         )
@@ -338,50 +402,6 @@ class VCS:
         shutil.rmtree(repo_path)
         return True
 
-    def add_file(self, file_path):
-        try:
-            self.repo.index.add([file_path])
-            return True
-        except Exception as e:
-            raise error.GitCommandError(f"Failed to add file: {e}")
-
-    def commit(self, message):
-        try:
-            self.repo.index.commit(message)
-            return True
-        except Exception as e:
-            raise error.GitCommandError(f"Failed to commit: {e}")
-
-    def push(self, remote_name='origin', branch_name='main'):
-        try:
-            remote = self.repo.remote(name=remote_name)
-            remote.push(refspec=branch_name)
-            return True
-        except git.exc.GitCommandError as e:
-            raise error.GitCommandError(f"Failed to push: {e}")
-
-    def pull(self, remote_name='origin', branch_name='main'):
-        try:
-            remote = self.repo.remote(name=remote_name)
-            remote.pull(refspec=branch_name)
-            return True
-        except git.exc.GitCommandError as e:
-            raise error.GitCommandError(f"Failed to pull: {e}")
-
-    def create_branch(self, branch_name):
-        try:
-            self.repo.git.branch(branch_name)
-            return True
-        except git.exc.GitCommandError as e:
-            raise error.GitCommandError(f"Failed to create branch: {e}")
-
-    def checkout_branch(self, branch_name):
-        try:
-            self.repo.git.checkout(branch_name)
-            return True
-        except git.exc.GitCommandError as e:
-            raise error.GitCommandError(f"Failed to checkout branch: {e}")
-
     def walk_repo(self):
         """
         Walks through the repository directory and lists all files and folders.
@@ -395,12 +415,58 @@ class VCS:
         return repo_structure
 
     def get_version(self):
-        data = rd_config().read(self.owner, self.repo_name)
+        data = rd_config(self.owner, self.repo_name).read_cfg()
         return {
             'major': data['v_major'],
             'minor': data['v_minor'],
             'patch': data['v_patch'],
         }
+
+    def commit(self, author, new_file_data:dict, commit_date=None, vertype=None):
+        """
+        Commit the changes for a singular file to the repository.
+
+        :param author: The author of the commit
+        :param new_file_data: The data of the file to commit in the format {line_number: line_content}
+        :param commit_date:  The date of the commit (default is now)
+        :param vertype: The type of version change (MAJOR, MINOR, PATCH) default is determined by the number of lines changed
+        :return:
+        """
+
+        if not type(new_file_data) is dict:
+            raise ValueError(f"Invalid file type: {type(new_file_data)}")
+        if not all(type(k) is int and type(v) is str for k, v in new_file_data.items()):
+            raise ValueError(f"Invalid file data: {new_file_data}")
+        if not commit_date is None and not type(commit_date) is datetime.datetime and not type(commit_date) is str:
+            raise ValueError(f"Invalid commit date: {commit_date}, {type(commit_date)}")
+
+        if not os.path.exists(f'data/vcs/{self.owner}'):
+            raise error.UserNotFound(f"User {self.owner} not found.")
+
+        lines_changed = len(new_file_data)
+        vms = vmsystem(owner=self.owner, repo_name=self.repo_name)
+        if vertype is None:
+            vms.increment_version(amount_lines_changed=lines_changed)
+        else:
+            vms.increment_version(ver_type=vertype)
+
+        rdc = rd_config(self.owner, self.repo_name)
+
+        semver = rdc.read_cfg()['v_major'] + '.' + rdc.read_cfg()['v_minor'] + '.' + rdc.read_cfg()['v_patch']
+
+        for line_content, line_number in new_file_data:
+            if commit_date is None:
+                commit_date = datetime.datetime.now()
+
+            rdc.write_commit(
+                author=author,
+                line_content=line_content,
+                line_number=line_number,
+                commit_date=commit_date,
+                semver=semver
+            )
+
+        return True
 
     @staticmethod
     def cli():
@@ -434,6 +500,7 @@ class VCS:
     class cli_funcs:
         @staticmethod
         def create_repo():
+            from library.user_login import users
             try:
                 owner = versioning_cli.ask_question(
                     question="Enter the owner of the repository.",
@@ -486,6 +553,7 @@ class VCS:
 
         @staticmethod
         def delete_repo():
+            from library.user_login import users
             try:
                 owner = versioning_cli.ask_question(
                     question="Enter the owner of the repository.",

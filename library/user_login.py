@@ -1,5 +1,6 @@
 from library.storage import var, PostgreSQL
 from library.errors import error
+from library.dvcs import VCS, rd_config
 import subprocess
 import secrets
 import logging
@@ -155,11 +156,21 @@ class user_login:
     def set_restricted(self, status:bool):
         return PostgreSQL().set_restricted(self.username, status)
 
-    def list_private_repos(self):
-        return PostgreSQL().list_private_repos(self.username)
+    def list_private_repos(self) -> dict:
+        repos_dir = f'data/vcs/{self.username}/repositories/'
 
-    def list_public_repos(self):
-        return PostgreSQL().list_public_repos(self.username)
+        repo_names = {}
+        for repo_name in os.listdir(repos_dir):
+            data = rd_config(self.username, repo_name).read_cfg()
+            if not data['visibility'] == 'private' and not data['visibility'] == 'unlisted':
+                continue
+
+            repo_names[repo_name] = data.get('description', 'No description provided.')
+
+        return repo_names
+
+    def list_public_repos(self, username=None):
+        return VCS.list_public_repositories(username if username is not None else self.username)
 
     def create_repository(self, repo_name, description, visibility):
         """
@@ -168,7 +179,7 @@ class user_login:
         assert type(repo_name) == str, f"Repository name must be a string, not {type(repo_name)}."
         assert type(description) == str, f"Description must be a string, not {type(description)}."
         assert type(visibility) == str, f"Visibility must be a string, not {type(visibility)}."
-        from library.versioncontrolsystem import VCS  # Prevents circular import
+        from library.dvcs import VCS  # Prevents circular import
 
         visibility:str = visibility.lower()
         assert visibility in ['public', 'private', 'unlisted'], f"Visibility must be either 'public' or 'private', not {visibility}."
@@ -183,7 +194,7 @@ class user_login:
         """
         Deletes a repository
         """
-        return PostgreSQL().delete_repository(self.username, repo_name)
+        return VCS.delete_repository(repo_name=repo_name , owner=self.username)
 
     def list_docker_containers(self) -> list:
         containers_owned = PostgreSQL().list_users_docker_containers(self.username)  # List of tuples if not empty

@@ -1,6 +1,7 @@
 from library.cmd_interface import cli_handler, colours
 from library.encryption import encryption
 from library.errors import error
+from library.dvcs import VCS
 import subprocess
 import psycopg2
 import datetime
@@ -8,7 +9,6 @@ import secrets
 import inspect
 import logging
 import dotenv
-import uuid
 import time
 import json
 import os
@@ -706,20 +706,6 @@ class PostgreSQL:
                 'container_id': 'TEXT PRIMARY KEY',
                 'owner': 'TEXT NOT NULL REFERENCES accounts(username)',
             },
-            # Each repo ID that belongs to a user
-            'user_repos': {
-                'repo_uuid': 'TEXT PRIMARY KEY',
-                'owner': 'TEXT NOT NULL REFERENCES accounts(username)',
-            },
-            'repositories': {
-                'repo_uuid': 'TEXT PRIMARY KEY',
-                'owner': 'TEXT NOT NULL REFERENCES accounts(username)',
-                'name': 'TEXT NOT NULL',
-                'description': 'TEXT',
-                'visibility': "TEXT DEFAULT 'public'",
-                'created_on': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
-                'last_updated': 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
-            },
             'user_permissions': {
                 'username': 'TEXT PRIMARY KEY NOT NULL REFERENCES accounts(username)',
                 'administrator': 'BOOLEAN DEFAULT FALSE',
@@ -920,155 +906,6 @@ class PostgreSQL:
         finally:
             cur.close()
             conn.close()
-
-    def get_repo_uuid4_via_repo_name_crossref(self, repo_name: str):
-        """
-        Retrieves the cross-references between a user and repositories.
-
-        :param repo_name: The name of the repository to get the UUID4 of.
-        :return:
-        """
-        conn = self.get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT repo_uuid
-                FROM repositories
-                WHERE name = %s;
-                """,
-                (repo_name,)
-            )
-            uuid4 = cur.fetchone()[0]
-        finally:
-            cur.close()
-            conn.close()
-
-        return uuid4
-
-    def get_owner_via_uuid4_repo_crossref(self, uuid4: uuid.UUID=None):
-        """
-        Retrieves the cross-references between a user and repositories.
-
-        :param uuid4: The UUID4 of the repository to get the owner of.
-        :return:
-        """
-        conn = self.get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT owner
-                FROM user_repos
-                WHERE repo_uuid = %s;
-                """,
-                (str(uuid4),)
-            )
-            owner = cur.fetchone()[0]
-        finally:
-            cur.close()
-            conn.close()
-
-        return owner
-
-    def get_repo_name_via_uuid4_repo_crossref(self, uuid4: uuid.UUID=None):
-        """
-        Retrieves the cross-references between a user and repositories.
-
-        :param uuid4: The UUID4 of the repository to get the name of.
-        :return:
-        """
-        conn = self.get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT name
-                FROM repositories
-                WHERE repo_uuid = %s;
-                """,
-                (str(uuid4),)
-            )
-            name = cur.fetchone()[0]
-        finally:
-            cur.close()
-            conn.close()
-
-        return name
-
-    def add_uuid4_repo_crossref(self, username, repo_uuid4):
-        """
-        Adds a cross-reference between a user and a repository.
-        :param username: The username of the user.
-        :param repo_uuid4: The UUID4 of the repository.
-        """
-        conn = self.get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                INSERT INTO user_repos (repo_uuid, owner)
-                VALUES (%s, %s)
-                """,
-                (str(repo_uuid4), username)
-            )
-            conn.commit()
-        except psycopg2.errors.UniqueViolation:
-            return False
-        finally:
-            cur.close()
-            conn.close()
-
-        return True
-
-    def remove_uuid4_repo_crossref(self, username, repo_uuid4):
-        """
-        Removes a cross-reference between a user and a repository.
-        :param username: The username of the user.
-        :param repo_uuid4: The UUID4 of the repository.
-        """
-        conn = self.get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                DELETE FROM user_repos
-                WHERE repo_uuid = %s AND owner = %s;
-                """,
-                (repo_uuid4, username)
-            )
-            conn.commit()
-        finally:
-            cur.close()
-            conn.close()
-
-    def get_repository_owner_by_repo_name(self, repo_name, hide_private=True):
-        """
-        Retrieves the owner of a repository.
-
-        :param repo_name: The name of the repository.
-        :type repo_name: str
-        :param hide_private: If True, only considers public repositories.
-        :type hide_private: bool
-        :return: The owner of the repository.
-        :rtype: str
-        """
-        conn = self.get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                f"""
-                SELECT owner
-                FROM repositories
-                WHERE name = %s{'' if not hide_private else " AND visibility = 'public'"};
-                """,
-                (repo_name,)
-            )
-            owner = cur.fetchone()[0]
-        finally:
-            cur.close()
-            conn.close()
-        return owner
 
     def check_user_exists(self, username:str, not_exist_ok=False):
         """
@@ -1321,216 +1158,15 @@ class PostgreSQL:
             cur.close()
             conn.close()
 
-    # TODO: Add way for user to trigger the creation of a repository
-    def new_repository(self, owner:str, name:str, description:str, visibility:str, repo_uuid4:uuid.UUID):
-        # Connect to the PostgreSQL database
-        conn = psycopg2.connect(**self.get_details())
-        cur = conn.cursor()
-
-        assert visibility in ['public', 'unlisted', 'private'], f"Visibility must be 'public', 'unlisted', or 'private'. Got {visibility}"
-        assert isinstance(name, str), f"The name must be a string. Got {type(name)} ({name})"
-        assert isinstance(description, str), f"The description must be a string. Got {type(description)} ({description})"
-        assert isinstance(owner, str), f"The owner must be a string. Got {type(owner)} ({owner})"
-
-        # Check if the owner exists
-        self.check_user_exists(owner)
-
-        # Insert the new repository
-        try:
-            cur.execute(
-                """
-                INSERT INTO repositories (repo_uuid, owner, name, description, visibility)
-                VALUES (%s, %s, %s, %s, %s);
-                """,
-                (str(repo_uuid4), str(owner), str(name), str(description), str(visibility))
-            )
-            conn.commit()
-            return True
-        except psycopg2.errors.UniqueViolation:
-            return False
-        except psycopg2.errors.OperationalError:
-            return False
-        except TypeError as err:
-            print(f"Error: {err} on line {err.__traceback__.tb_lineno} in file {err.__traceback__.tb_frame.f_code.co_filename}\n"
-                  f"Data: {str(repo_uuid4), owner, name, description, visibility}\n"
-                  f"Type: {type(repo_uuid4)} ({type(str(repo_uuid4))}), {type(owner)}, {type(name)}, {type(description)}, {type(visibility)}")
-            return False
-        finally:
-            cur.close()
-            conn.close()
-
-    # TODO: Add way for user to trigger the deletion of a repository
-    def delete_repository(self, owner:str, name:str):
-        # Connect to the PostgreSQL database
-        conn = psycopg2.connect(**self.get_details())
-        cur = conn.cursor()
-
-        assert isinstance(name, str)
-        assert isinstance(owner, str)
-
-        # Check if the owner exists
-        self.check_user_exists(owner)
-
-        try:
-            # Delete all commits associated with the repository
-            cur.execute(
-                """
-                DELETE FROM commits
-                WHERE repo_uuid = (
-                    SELECT repo_uuid
-                    FROM repositories
-                    WHERE owner = %s AND name = %s
-                );
-                """,
-                (owner, name)
-            )
-
-            # Delete the repository
-            cur.execute(
-                """
-                DELETE FROM repositories
-                WHERE owner = %s AND name = %s;
-                """,
-                (owner, name)
-            )
-            conn.commit()
-        finally:
-            cur.close()
-            conn.close()
-
-    # TODO: Add way for user to trigger updating if its private or not
-    def update_repository_visibility(self, owner, name, visibility):
-        # Connect to the PostgreSQL database
-        conn = psycopg2.connect(**self.get_details())
-        cur = conn.cursor()
-
-        assert isinstance(visibility, bool)
-        assert isinstance(name, str)
-        assert isinstance(owner, str)
-
-        # Check if the owner exists
-        self.check_user_exists(owner)
-
-        # Update the repository
-        try:
-            cur.execute(
-                """
-                UPDATE repositories
-                SET visibility = %s
-                WHERE owner = %s AND name = %s;
-                """,
-                (visibility, owner, name,)
-            )
-            conn.commit()
-        finally:
-            cur.close()
-            conn.close()
-
-    # TODO: Add way for user to trigger updating the name of the repository
-    def update_repository_name(self, owner, old_name, new_name):
-        # Connect to the PostgreSQL database
-        conn = psycopg2.connect(**self.get_details())
-        cur = conn.cursor()
-
-        assert isinstance(new_name, str)
-        assert isinstance(old_name, str)
-        assert isinstance(owner, str)
-
-        # Check if the owner exists
-        self.check_user_exists(owner)
-
-        # Update the repository
-        try:
-            cur.execute(
-                """
-                UPDATE repositories
-                SET name = %s
-                WHERE owner = %s AND name = %s;
-                """,
-                (new_name, owner, old_name,)
-            )
-            conn.commit()
-        finally:
-            cur.close()
-            conn.close()
-
-    # TODO: Add way for user to trigger updating the description of the repository
-    def update_repository_description(self, owner, name, description):
-        # Connect to the PostgreSQL database
-        conn = psycopg2.connect(**self.get_details())
-        cur = conn.cursor()
-
-        assert isinstance(description, str)
-        assert isinstance(name, str)
-        assert isinstance(owner, str)
-
-        # Check if the owner exists
-        self.check_user_exists(owner)
-
-        # Update the repository
-        try:
-            cur.execute(
-                """
-                UPDATE repositories
-                SET description = %s
-                WHERE owner = %s AND name = %s;
-                """,
-                (description, owner, name,)
-            )
-            conn.commit()
-        finally:
-            cur.close()
-            conn.close()
-
     @staticmethod
     def sort_to_dict(cursor):
         columns = [desc[0] for desc in cursor.description]
         return [dict(zip(columns, item)) for item in cursor.fetchall()]
 
-    def list_public_repos(self, username):
+    @staticmethod
+    def list_public_repos(username):
         # Check if the user exists
-        self.check_user_exists(username)
-
-        conn = self.get_connection()
-        cur = conn.cursor()
-        try:
-            # Execute the query to get repository data
-            cur.execute(
-                """
-                SELECT *
-                FROM repositories
-                WHERE owner = %s AND visibility = 'public';
-                """,
-                (username,)
-            )
-
-            return PostgreSQL.sort_to_dict(cur)
-        finally:
-            cur.close()
-            conn.close()
-
-    def list_private_repos(self, username):
-        # Check if the user exists
-        self.check_user_exists(username)
-
-        conn = self.get_connection()
-        cur = conn.cursor()
-
-        try:
-            cur.execute(
-                """
-                SELECT repo_uuid, name, description, owner, created_on, last_updated, visibility
-                FROM repositories
-                WHERE owner = %s AND visibility = 'private';
-                """,
-                (username,)
-            )
-
-            # Return the data and sort it into a dictionary
-            return PostgreSQL.sort_to_dict(cur)
-        finally:
-            cur.close()
-            conn.close()
+        return VCS.list_public_repositories(username)
 
     def get_repo(self, owner, name):
         # Check if the user exists

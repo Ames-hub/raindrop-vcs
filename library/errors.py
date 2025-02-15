@@ -105,3 +105,8 @@ class error:
         def __init__(self, message):
             self.code_number = 21
             super().__init__(message)
+
+    class UserNotFound(Exception):
+        def __init__(self, message):
+            self.code_number = 22
+            super().__init__(message)

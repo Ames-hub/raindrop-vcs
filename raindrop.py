@@ -1,6 +1,6 @@
 from library.storage import var, PostgreSQL, postgre_cli
 from library.cmd_interface import cli_handler, colours
-from library.versioncontrolsystem import vmsystem, VCS
+from library.dvcs import vmsystem, VCS
 from library.encryption import encryption
 from library.quartapi import QuartAPI
 from library.user_login import users
@@ -23,6 +23,56 @@ logging.basicConfig(
 
 keys = encryption()
 
+class rd_settings:
+    def __init__(self):
+        self.settings_cli = cli_handler(
+            'RDSettings',
+            is_main_cli=False
+        )
+
+        self.settings_cli.register_command(
+            cmd='fbtoggles',
+            description='Toggle the fallbacks',
+            func=self.fallbacks_toggle().settings_cli.main,
+        )
+
+    class fallbacks_toggle:
+        def __init__(self):
+            self.settings_cli = cli_handler(
+                'FallbacksToggle',
+                is_main_cli=False,
+                greet_func=self.greeting,
+            )
+
+            self.settings_cli.register_command(
+                cmd='fallback_db',
+                description='Toggle the local DB fallback',
+                func=self.toggle_fallback_db,
+            )
+
+        @staticmethod
+        def greeting():
+            allow_local_db: bool = var.get('fallbacks.allow_local_db', default=False)
+            if allow_local_db:
+                print(f"{colours['green']}Local DB fallback is enabled.")
+            else:
+                print(f"{colours['red']}Local DB fallback is disabled.")
+
+            print("Toggle the system fallbacks here. Type 'help' for a list of commands.")
+
+        @staticmethod
+        def toggle_fallback_db():
+            status: bool = var.get('fallbacks.allow_local_db', default=False)
+            if status:
+                print(f"{colours['yellow']}Disabling local DB fallback...")
+                var.set('fallbacks.allow_local_db', False)
+            else:
+                print(f"{colours['green']}Enabling local DB fallback...")
+                var.set('fallbacks.allow_local_db', True)
+
+            return True
+
+# TODO: URGENT, FIGURE OUT WHY YOU CANNOT ACCESS A CLI TWICE (exit, then try to access it again. It will not work)
 class raindrop:
     def __init__(self):
         self.cli = cli_handler(
@@ -99,11 +149,12 @@ class raindrop:
             cmd='versioning',
             description='Manage the version control system',
             func=vmsystem.cli,
+            aliases=['vs', 'versioncontrol', 'versioncontrolsystem', 'vcs', 'vc'],
         )
 
         self.cli.register_command(
-            cmd='vcs',
-            aliases=['versioncontrol', 'versioncontrolsystem', 'vc'],
+            cmd='rcs',
+            aliases=['repocontrol', 'repocontrolsystem', 'rc'],
             description='Create, delete, and generally manage repositories',
             func=VCS.cli,
         )
@@ -112,6 +163,13 @@ class raindrop:
             cmd='reveal_sys_pass',
             description='Reveal the system raindrop account password',
             func=self.reveal_sys_pass,
+        )
+
+        self.cli.register_command(
+            cmd='rd_settings',
+            description='Manage Raindrop settings',
+            func=rd_settings().settings_cli.main,
+            aliases=['settings', 'rdsettings', 'rds', 'raindropsettings', 'raindrop_settings'],
         )
 
         PostgreSQL().modernize()

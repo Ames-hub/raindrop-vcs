@@ -1,4 +1,4 @@
-from library.versioncontrolsystem import VCS
+from library.dvcs import VCS
 from library.user_login import user_login, users
 from library.storage import var, PostgreSQL
 from library.webui import webgui
@@ -359,7 +359,7 @@ class vcs_routes:
     async def list_public_repositories(username):
         if not os.path.exists(f'data/users/{username}'):
             return {'error': 'User does not exist'}, 404
-        return {'public': VCS.list_public_repositories(username)}, 200
+        return {'public': VCS.list_public_repositories(owner=username)}, 200
 
     @staticmethod
     @app.route('/api/vcs/repositories/list_all', methods=['GET'])
