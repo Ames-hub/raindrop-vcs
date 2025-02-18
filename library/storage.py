@@ -25,7 +25,7 @@ if os.path.exists('.env'):
 keys = encryption()
 key_seperator = '.'
 settings_path = 'settings.json'
-DEBUG = bool(os.environ.get('DEBUG', False))
+DEBUG = True if os.environ.get('DEBUG', False).lower() == 'true' else False
 
 class dt:
     SETTINGS = {
@@ -440,10 +440,11 @@ class postgre_cli:
             return True
 
 class PostgreSQL:
-    def __init__(self):
+    def __init__(self, load_cli=False):
         self.details = PostgreSQL.get_details()
 
-        self.cli = postgre_cli()
+        if load_cli:
+            self.cli = postgre_cli()
 
         # Makes a test connection to the database
         PostgreSQL.ping_db()

@@ -82,6 +82,8 @@ class raindrop:
             use_plugins=True
         )
 
+        self.pg_cli = postgre_cli()
+
     def main(self):
         if var.get('firstlaunch.main'):
             self.setup()
@@ -141,7 +143,7 @@ class raindrop:
         self.cli.register_command(
             cmd='postgre',
             description='Enter the PostgreSQL CLI',
-            func=postgre_cli().main,
+            func=self.pg_cli.main,
             aliases=['pg', 'db', 'database', 'postgres', 'postgresql', 'storage', 'dbcli'],
         )
 
@@ -392,7 +394,7 @@ class raindrop:
             else:
                 logging.info("The user has chosen to use an existing PostgreSQL database.")
                 print("Entering DB pairing/setup.")
-                postgre_cli().pair()
+                self.pg_cli.pair()
 
         while True:
             print(f"{colours['red']}!!! IMPORTANT SECURITY NOTICE !!!")

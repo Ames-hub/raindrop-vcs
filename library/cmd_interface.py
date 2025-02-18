@@ -3,17 +3,22 @@ from colorama import Fore, Style
 from typing import List
 import importlib.util
 import threading
-import platform
 import colorama
 import datetime
 import logging
+import inspect
+import dotenv
 import time
 import os
 
 os.makedirs('logs/', exist_ok=True)
 
-DEBUG = os.environ.get('RD_DEBUG', False)
+dotenv.load_dotenv('.env')
+DEBUG = True if os.environ.get('DEBUG', "False").lower() == 'true' else False
 colorama.init(autoreset=True)
+
+if DEBUG:
+    import platform
 
 logging.basicConfig(
     filename=f'logs/{datetime.datetime.now().strftime("%Y-%m-%d")}.log',
@@ -63,6 +68,8 @@ class cli_handler:
         self.running = True
         self.plugins_dir = plugins_dir
         self.running_threads = []
+
+        logging.info(f"CLI Handler for {cli_name} initialised by caller {inspect.stack()[1].filename} {inspect.stack()[1].lineno}. Func: {inspect.stack()[1].function}.")
 
         if use_default_cmds:
             # Sets up the default commands as registered cmds and cmd_dict entries.
@@ -131,6 +138,7 @@ class cli_handler:
         for i in range(100):
             print("\n")
         os.system('cls' if os.name == 'nt' else 'clear')
+        logging.info("Cleared terminal screen.")
         return True
 
     def load_plugin(self, plugin_file_dir: str, class_name: str) -> bool:
@@ -218,6 +226,7 @@ class cli_handler:
                     task_thread = threading.Thread(target=task_worker, name=plugin_file_dir, daemon=True)
                     self.running_threads.append(plugin_file_dir)
                     task_thread.start()
+                    logging.info(f"Started automated task for plugin: {plugin_name}")
 
             if " " in plugin_name:
                 raise ValueError("Plugin name cannot have spaces.")
@@ -234,6 +243,8 @@ class cli_handler:
                 expected_options_only=expected_options_only
             )
             self.register_plugin_help_func(plugin_name, help_func)
+
+            logging.info("Loaded plugin: " + plugin_name)
 
             return True
         except (ImportError, AttributeError, ValueError, FileNotFoundError) as err:
@@ -302,6 +313,8 @@ class cli_handler:
         :param plugins_root_dir:
         :return:
         """
+        logging.info(f"Loading plugins from directory for {self.cli_name} CLI: " + plugins_root_dir)
+
         if not os.path.isdir(plugins_root_dir):
             print("Plugin directory does not exist.")
             return False
@@ -328,6 +341,7 @@ class cli_handler:
         self.cmds_dict["help"]["plugins"][plugin_name] = help_func
         self.cmds_dict["help"]["options"]["args"].append(plugin_name)
         self.registered_commands["help"]["uses_args"] = True
+        logging.info(f"Registered help function for plugin: {plugin_name}")
         return True
 
     def find_similar(self, cmd: str, cmd_args: list, ask_to_execute=False) -> dict | None:
@@ -488,12 +502,15 @@ class cli_handler:
                     if response not in ['y', 'yes']:
                         continue
 
+                logging.info(f"User was asked: \"{question}\" and answered: \"{answer}\". (Answer Type: {type(answer)})")
+
                 return answer
         except KeyboardInterrupt:
             raise self.exited_questioning
 
     class exited_questioning(Exception):
         def __init__(self):
+            logging.info("User exited the question and answer session.")
             super().__init__("User cancelled the question and answer session.")
 
     def list_commands(self, return_only=False):
@@ -624,6 +641,8 @@ class cli_handler:
         self.registered_commands[cmd]['args'] = func_args
         self.registered_commands[cmd]['do_pass_cmd'] = do_pass_cmd
         self.cmds_dict[cmd] = {'msg': description, 'options': options}
+
+        logging.info(f"CLI {self.cli_name} registered command: {cmd}")
         return True
 
     def is_alias(self, possible_alias: str) -> bool:
@@ -656,15 +675,16 @@ class cli_handler:
         make functions available and callable BEFORE designing their web interface.
         :return:
         """
+        self.running = True
         executing_similar = (False, None, None)
-        logging.info("TF CLI has been called.")
+        logging.info(f"{self.cli_name} CLI has been called.")
         try:
             # Captures current terminal text and puts it in a variable
             if DEBUG is True:
                 print(f"NOTICE: {self.cli_name} CLI is in Debug Mode")
 
             try:
-                while self.running:
+                while self.running is True:
                     options = {'args': [], 'kwargs': {}}
                     if not executing_similar[0]:
                         if self.greet_func is not None:
