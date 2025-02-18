@@ -72,7 +72,6 @@ class rd_settings:
 
             return True
 
-# TODO: URGENT, FIGURE OUT WHY YOU CANNOT ACCESS A CLI TWICE (exit, then try to access it again. It will not work)
 class raindrop:
     def __init__(self):
         self.cli = cli_handler(
