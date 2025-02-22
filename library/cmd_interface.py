@@ -686,6 +686,7 @@ class cli_handler:
             try:
                 while self.running is True:
                     options = {'args': [], 'kwargs': {}}
+                    cmd_found = False
                     if not executing_similar[0]:
                         if self.greet_func is not None:
                             self.greet_func()
@@ -781,16 +782,23 @@ class cli_handler:
                             if expected_only_violated:
                                 continue
 
-                            if self.registered_commands[cmd]['uses_args'] is True:
-                                if not pass_cmd:
-                                    run_success = self.registered_commands[cmd]['func'](options=options)
+                            try:
+                                if self.registered_commands[cmd]['uses_args'] is True:
+                                    if not pass_cmd:
+                                        run_success = self.registered_commands[cmd]['func'](options=options)
+                                    else:
+                                        run_success = self.registered_commands[cmd]['func'](options=options, user_cmd=prompt)
                                 else:
-                                    run_success = self.registered_commands[cmd]['func'](options=options, user_cmd=prompt)
-                            else:
-                                if not pass_cmd:
-                                    run_success = self.registered_commands[cmd]['func']()
-                                else:
-                                    run_success = self.registered_commands[cmd]['func'](user_cmd=prompt)
+                                    if not pass_cmd:
+                                        run_success = self.registered_commands[cmd]['func']()
+                                    else:
+                                        run_success = self.registered_commands[cmd]['func'](user_cmd=prompt)
+                                cmd_found = True
+                            except Exception as err:
+                                print(f"{colours['red']}Error: {err}")
+                                logging.error(f"Error: {err}")
+                                run_success = False
+                                cmd_found = True
 
                             if DEBUG:
                                 print(f"Command returned: {run_success}")
@@ -807,7 +815,7 @@ class cli_handler:
                             run_success = False
 
                     # Acts as an Else block. If a sub-command is not found, will now fall here.
-                    if run_success is not True:
+                    if run_success is not True and cmd_found is False:
                         print(f"{colours['red']}Error: Command not found.")
                         logging.debug(f"Command not found: {cmd}")
                         # This does not support command kwargs.

@@ -138,79 +138,6 @@ class QuartAPI:
 
         return wrapper
 
-    @staticmethod
-    def administrator_only(api_function):
-        @functools.wraps(api_function)
-        async def wrapper(*args, **kwargs):
-            # Get the token from the request headers and remove the "Bearer " part
-            token = quart.request.headers.get('Authorization', None).split(" ")[1]
-
-            # If token is not in headers, get it from the POST data
-            if not token:
-                data = await quart.request.get_json()
-                token = data.get('token')
-
-            # Validate the token
-            if PostgreSQL().validate_token(token) is True:
-                user = user_login(token=token)
-
-                if not user.is_restricted():
-                    raise error.restricted_account
-
-                return await api_function(*args, user=user, **kwargs)
-            else:
-                # Raise an error if the token is not valid
-                raise error.bad_token
-
-        return wrapper
-
-class view_routes:
-    @staticmethod
-    @app.route('/view/<username>/pfp', methods=['GET'])
-    async def get_pfp(username):
-        pfp: str = users.get_pfp(username=username, dir_only=True)
-        return await quart.send_file(pfp), 200
-
-    @staticmethod
-    @app.route('/view/<username>/banner', methods=['GET'])
-    async def get_banner(username):
-        banner_data = users.get_banner(username, dir_only=True)
-        return await quart.send_file(banner_data), 200
-
-    @staticmethod
-    @app.route('/view/<username>/bio', methods=['GET'])
-    async def get_bio(username):
-        return users.get_bio(username), 200
-
-    @staticmethod
-    @app.route('/view/<account>/<repository>', methods=['GET'])
-    async def get_repository(account, repository):
-        # Just checks if the repository exists. Most backend happens else where.
-        if not VCS.repository_exists(account, repository):
-            return await quart.send_file('website/404.html'), 404
-
-        # Render the repository page
-        return await quart.render_template(
-            'repository.html',
-            username=account,
-            repo_name=repository,
-        )
-
-    @staticmethod
-    @app.route('/view/<username>', methods=['GET'])
-    async def get_account(username):
-        if users.exists(username):
-            return await quart.render_template(
-                template_name_or_list='account.html',
-                username=username,
-                pfp_address=users.get_pfp_address(username),
-                banner_address=users.get_banner_address(username),
-                user_bio=users.get_bio(username),
-            ), 200
-        else:
-            # Responds with a 404 error if the user does not exist
-            return await quart.send_file('website/404.html'), 404
-
 class api_routes:
     @staticmethod
     @app.route('/api/status')
@@ -443,18 +370,12 @@ class vcs_routes:
             return {'error': 'Repository not found'}, 404
 
     @staticmethod
-    @app.route('/api/vcs/get_repo_version', methods=['POST'])
+    @app.route('/api/vcs/getversion', methods=['POST'])
     @QuartAPI.require_json
-    @QuartAPI.require_authentication
-    async def get_repo_version(user: user_login):
+    async def get_repo_version():
         data = await quart.request.get_json()
         repo_owner = data.get('repo_owner', None)
         repo_name = data.get('repo_name', None)
-
-        if repo_owner != user.username:
-            # TODO: Make this allow collaborators to repo's. Also I need to add collaborators as a feature.
-            if not user.is_admin:
-                return {'error': 'You do not have permission to access this repository'}, 403
 
         if not repo_name or not repo_owner:
             return {'error': 'repo_name and repo_owner are required'}, 400

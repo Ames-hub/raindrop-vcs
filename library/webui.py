@@ -124,6 +124,7 @@ class webgui:
             )
             webui_cli.register_command(
                 cmd='url',
+                aliases=['get_url', 'geturl', 'link'],
                 func=webgui.cli.get_url,
                 description='Get the URL of the WebUI'
             )

@@ -110,3 +110,8 @@ class error:
         def __init__(self, message):
             self.code_number = 22
             super().__init__(message)
+
+    class InvalidRDCRepoVisibility(Exception):
+        def __init__(self, message):
+            self.code_number = 23
+            super().__init__(message)

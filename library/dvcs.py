@@ -19,6 +19,204 @@ versioning_cli = cli_handler(
     use_plugins=False
 )
 
+class rd_config:
+    """
+    Raindrop Configuration System for a repository.
+    Manages the entire .rdc directory within a repository and its contents.
+    """
+    def __init__(self, repo_owner:str, repo_name:str):
+        self.rdc_file = None
+        self.repo_owner = repo_owner
+        self.repo_name = repo_name
+
+    def commit_line(self, semver, line_content, line_number, author, commit_date=None):
+        """
+        Write a commit to the database file.
+
+        :param semver: The semantic version of the commit
+        :param line_content: The content of the line changed
+        :param line_number: The line number of the line changed
+        :param author: The author of the commit
+        :param commit_date: The date of the commit
+        :return:
+        """
+        db_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/vcs.sqlite3'
+        conn = sqlite3.connect(db_file)
+        cur = conn.cursor()
+
+        commit_date = str(commit_date) if commit_date is not None else str(datetime.datetime.now())
+
+        cur.execute(
+            f"INSERT INTO commits VALUES (?, ?, ?, ?, ?)",
+            (semver, line_content, line_number, author, commit_date)
+        )
+
+        conn.commit()
+
+    def exists(self) -> bool:
+        self.rdc_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/cfg'
+        return os.path.exists(self.rdc_file)
+
+    def read_cfg(self) -> dict:
+        """
+        Read the RDC file for a repository.
+
+        :return:
+        """
+        self.rdc_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/cfg'
+        with open(self.rdc_file, 'r') as f:
+            data = f.read()
+
+        # Parse the data
+        line_list = data.split('\n')
+        rdc_dict = {}
+        for line in line_list:
+            if len(line) <= 0:
+                continue
+            try:
+                key, value = line.split("=", maxsplit=1)
+            except ValueError:
+                print(f"Error parsing line in RDC read func: {line}")
+                continue
+
+            # Parse back the description
+            rdc_dict[key] = value.replace("<br>", "\n")
+
+        return rdc_dict
+
+    def read_db(self, table_name:str) -> list:
+        """
+        Read the database file for a repository.
+
+        :param table_name: The name of the table to read from.
+        :return:
+        """
+        db_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/vcs.sqlite3'
+        conn = sqlite3.connect(db_file)
+        cur = conn.cursor()
+
+        cur.execute(f"SELECT * FROM {table_name}")
+        data = cur.fetchall()
+
+        # Arrange the data into a list of dictionaries
+        data = [dict(zip([desc[0] for desc in cur.description], row)) for row in data]
+
+        return data
+
+    def register(self, description, visibility) -> uuid.UUID:
+        """
+        Register a new RDC file for a repository by writing its configuration to a file.
+        This function will also add the UUID to the PostgreSQL database.
+        This is not to be used for updating an existing RDC file.
+
+        :param description:
+        :param visibility:
+        :return:
+        """
+        if not visibility in ['private', 'public', 'unlisted']:
+            raise error.InvalidRepoVisibility(f"Invalid visibility {visibility}")
+
+        if self.rdc_file is None:
+            self.rdc_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/cfg'
+            os.makedirs(os.path.dirname(self.rdc_file), exist_ok=True)
+
+        if os.path.exists(self.rdc_file):
+            raise error.RDC_AlreadyExists(f"RDC already exists for {self.repo_name}")
+
+        # Parse the description to allow for any/all problematic characters.
+        description = description.replace("\n", "<br>")
+
+        UUID = uuid.uuid4()
+
+        try:
+            with open(self.rdc_file, 'w') as f:
+                f.write(f"owner={self.repo_owner}\n")
+                f.write(f"name={self.repo_name}\n")
+                f.write(f"description={description}\n")
+                f.write(f"uuid={UUID}\n")
+                f.write(f"visibility={visibility}\n")
+                f.write(f"created_at={datetime.datetime.now()}\n")
+                f.write(f"last_update_at={datetime.datetime.now()}\n")
+                f.write(f"v_major=0\n")
+                f.write(f"v_minor=0\n")
+                f.write(f"v_patch=0\n")
+        except Exception as e:
+            raise error.RDCWriteError(f"Failed to write to RDC: {e}")
+
+        # Create the sqlite3 db file
+        db_file = f"data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/vcs.sqlite3"
+
+        conn = sqlite3.connect(db_file)
+        cur = conn.cursor()
+
+        table_dict = {
+            "commits": {
+                "Semver": "TEXT NOT NULL PRIMARY KEY",
+                "line_content": "TEXT NOT NULL",
+                "line_number": "INTEGER NOT NULL",
+                "author": "TEXT NOT NULL",
+                "commit_date": "TEXT NOT NULL",
+            },
+        }
+
+        for table_name, table_columns in table_dict.items():
+            cur.execute(f"CREATE TABLE {table_name} ({', '.join([f'{k} {v}' for k, v in table_columns.items()])})")
+
+        conn.commit()
+
+        return UUID
+
+    def update(self, key, value, repo_name, repo_owner):
+        """
+        Update a key in the RDC file.
+
+        :param key: The key to update
+        :param value: The value to update the key to
+        :param repo_name: The name of the repository
+        :param repo_owner: The owner of the repository
+        :return:
+        """
+        if self.rdc_file is None:
+            self.rdc_file = f'data/vcs/{repo_owner}/repositories/{repo_name}/.rdc/cfg'
+
+        if not os.path.exists(self.rdc_file):
+            raise error.RDCNotFound(f"RDC not found for {repo_name}")
+
+        with open(self.rdc_file, 'r') as f:
+            data = f.read()
+
+        # Parse the data
+        line_list = data.split('\n')
+        rdc_dict = {}
+        for line in line_list:
+            if len(line) <= 0:
+                continue
+            try:
+                k, v = line.split("=", maxsplit=1)
+            except ValueError:
+                print(f"Error parsing in RDC update func. Line: {line}")
+                continue
+            rdc_dict[k] = v
+
+        rdc_dict[key] = value
+
+        try:
+            with open(self.rdc_file, 'w') as f:
+                f.write(f"owner={rdc_dict['owner']}\n")
+                f.write(f"name={rdc_dict['name']}\n")
+                f.write(f"description={rdc_dict['description']}\n")
+                f.write(f"uuid={rdc_dict['uuid']}\n")
+                f.write(f"visibility={rdc_dict['visibility']}\n")
+                f.write(f"created_at={rdc_dict['created_at']}\n")
+                f.write(f"last_update_at={datetime.datetime.now()}\n")
+                f.write(f"v_major={rdc_dict['v_major']}\n")
+                f.write(f"v_minor={rdc_dict['v_minor']}\n")
+                f.write(f"v_patch={rdc_dict['v_patch']}\n")
+        except Exception as e:
+            raise error.RDCWriteError(f"Failed to write to RDC: {e}")
+
+        return True
+
 class vmsystem:
     """
     Version Memory/Management System for an existing repository.
@@ -139,204 +337,6 @@ class vmsystem:
             print("Version added.")
             return True
 
-class rd_config:
-    """
-    Raindrop Configuration System for a repository.
-    Manages the entire .rdc directory within a repository and its contents.
-    """
-    def __init__(self, repo_owner:str, repo_name:str):
-        self.rdc_file = None
-        self.repo_owner = repo_owner
-        self.repo_name = repo_name
-
-    def write_commit(self, semver, line_content, line_number, author, commit_date=None):
-        """
-        Write a commit to the database file.
-
-        :param semver: The semantic version of the commit
-        :param line_content: The content of the line changed
-        :param line_number: The line number of the line changed
-        :param author: The author of the commit
-        :param commit_date: The date of the commit
-        :return:
-        """
-        db_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/vcs.rd'
-        conn = sqlite3.connect(db_file)
-        cur = conn.cursor()
-
-        commit_date = str(commit_date) if commit_date is not None else str(datetime.datetime.now())
-
-        cur.execute(
-            f"INSERT INTO commits VALUES (?, ?, ?, ?, ?)",
-            (semver, line_content, line_number, author, commit_date)
-        )
-
-        conn.commit()
-
-    def exists(self) -> bool:
-        self.rdc_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/cfg'
-        return os.path.exists(self.rdc_file)
-
-    def read_cfg(self) -> dict:
-        """
-        Read the RDC file for a repository.
-
-        :return:
-        """
-        self.rdc_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/cfg'
-        with open(self.rdc_file, 'r') as f:
-            data = f.read()
-
-        # Parse the data
-        line_list = data.split('\n')
-        rdc_dict = {}
-        for line in line_list:
-            if len(line) <= 0:
-                continue
-            try:
-                key, value = line.split("=", maxsplit=1)
-            except ValueError:
-                print(f"Error parsing line in RDC read func: {line}")
-                continue
-
-            # Parse back the description
-            rdc_dict[key] = value.replace("<br>", "\n")
-
-        return rdc_dict
-
-    def read_db(self, table_name:str) -> list:
-        """
-        Read the database file for a repository.
-
-        :param table_name: The name of the table to read from.
-        :return:
-        """
-        db_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/vcs.rd'
-        conn = sqlite3.connect(db_file)
-        cur = conn.cursor()
-
-        cur.execute(f"SELECT * FROM {table_name}")
-        data = cur.fetchall()
-
-        # Arrange the data into a list of dictionaries
-        data = [dict(zip([desc[0] for desc in cur.description], row)) for row in data]
-
-        return data
-
-    def register(self, description, visibility) -> uuid.UUID:
-        """
-        Register a new RDC file for a repository by writing its configuration to a file.
-        This function will also add the UUID to the PostgreSQL database.
-        This is not to be used for updating an existing RDC file.
-
-        :param description:
-        :param visibility:
-        :return:
-        """
-        if not visibility in ['private', 'public', 'unlisted']:
-            raise error.InvalidRepoVisibility(f"Invalid visibility {visibility}")
-
-        if self.rdc_file is None:
-            self.rdc_file = f'data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/cfg'
-            os.makedirs(os.path.dirname(self.rdc_file), exist_ok=True)
-
-        if os.path.exists(self.rdc_file):
-            raise error.RDC_AlreadyExists(f"RDC already exists for {self.repo_name}")
-
-        # Parse the description to allow for any/all problematic characters.
-        description = description.replace("\n", "<br>")
-
-        UUID = uuid.uuid4()
-
-        try:
-            with open(self.rdc_file, 'w') as f:
-                f.write(f"owner={self.repo_owner}\n")
-                f.write(f"name={self.repo_name}\n")
-                f.write(f"description={description}\n")
-                f.write(f"uuid={UUID}\n")
-                f.write(f"visibility={visibility}\n")
-                f.write(f"created_at={datetime.datetime.now()}\n")
-                f.write(f"last_update_at={datetime.datetime.now()}\n")
-                f.write(f"v_major=0\n")
-                f.write(f"v_minor=0\n")
-                f.write(f"v_patch=0\n")
-        except Exception as e:
-            raise error.RDCWriteError(f"Failed to write to RDC: {e}")
-
-        # Create the sqlite3 db file
-        db_file = f"data/vcs/{self.repo_owner}/repositories/{self.repo_name}/.rdc/vcs.rd"
-
-        conn = sqlite3.connect(db_file)
-        cur = conn.cursor()
-
-        table_dict = {
-            "commits": {
-                "Semver": "TEXT NOT NULL PRIMARY KEY",
-                "line_content": "TEXT NOT NULL",
-                "line_number": "INTEGER NOT NULL",
-                "author": "TEXT NOT NULL",
-                "commit_date": "TEXT NOT NULL",
-            },
-        }
-
-        for table_name, table_columns in table_dict.items():
-            cur.execute(f"CREATE TABLE {table_name} ({', '.join([f'{k} {v}' for k, v in table_columns.items()])})")
-
-        conn.commit()
-
-        return UUID
-
-    def update(self, key, value, repo_name, repo_owner):
-        """
-        Update a key in the RDC file.
-
-        :param key: The key to update
-        :param value: The value to update the key to
-        :param repo_name: The name of the repository
-        :param repo_owner: The owner of the repository
-        :return:
-        """
-        if self.rdc_file is None:
-            self.rdc_file = f'data/vcs/{repo_owner}/repositories/{repo_name}/.rdc/cfg'
-
-        if not os.path.exists(self.rdc_file):
-            raise error.RDCNotFound(f"RDC not found for {repo_name}")
-
-        with open(self.rdc_file, 'r') as f:
-            data = f.read()
-
-        # Parse the data
-        line_list = data.split('\n')
-        rdc_dict = {}
-        for line in line_list:
-            if len(line) <= 0:
-                continue
-            try:
-                k, v = line.split("=", maxsplit=1)
-            except ValueError:
-                print(f"Error parsing in RDC update func. Line: {line}")
-                continue
-            rdc_dict[k] = v
-
-        rdc_dict[key] = value
-
-        try:
-            with open(self.rdc_file, 'w') as f:
-                f.write(f"owner={rdc_dict['owner']}\n")
-                f.write(f"name={rdc_dict['name']}\n")
-                f.write(f"description={rdc_dict['description']}\n")
-                f.write(f"uuid={rdc_dict['uuid']}\n")
-                f.write(f"visibility={rdc_dict['visibility']}\n")
-                f.write(f"created_at={rdc_dict['created_at']}\n")
-                f.write(f"last_update_at={datetime.datetime.now()}\n")
-                f.write(f"v_major={rdc_dict['v_major']}\n")
-                f.write(f"v_minor={rdc_dict['v_minor']}\n")
-                f.write(f"v_patch={rdc_dict['v_patch']}\n")
-        except Exception as e:
-            raise error.RDCWriteError(f"Failed to write to RDC: {e}")
-
-        return True
-
 class VCS:
     def __init__(self, owner, repo_name):
         self.repo_path = f'data/vcs/{owner}/repositories/{repo_name}'
@@ -374,7 +374,7 @@ class VCS:
                     if rdc_data['visibility'] == 'public':
                         all_repos[repo] = rdc_data.get('description', 'No description')
 
-            return all_repos
+            return all_repos  # example output: {'repo1': 'Description', 'repo2': 'Description'}
 
     @staticmethod
     def repository_exists(owner, repo_name):
@@ -458,7 +458,7 @@ class VCS:
             if commit_date is None:
                 commit_date = datetime.datetime.now()
 
-            rdc.write_commit(
+            rdc.commit_line(
                 author=author,
                 line_content=line_content,
                 line_number=line_number,

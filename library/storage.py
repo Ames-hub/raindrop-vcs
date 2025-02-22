@@ -25,7 +25,7 @@ if os.path.exists('.env'):
 keys = encryption()
 key_seperator = '.'
 settings_path = 'settings.json'
-DEBUG = True if os.environ.get('DEBUG', False).lower() == 'true' else False
+DEBUG = True if os.environ.get('DEBUG', 'False').lower() == 'true' else False
 
 class dt:
     SETTINGS = {
@@ -700,7 +700,6 @@ class PostgreSQL:
                 'username': 'TEXT NOT NULL UNIQUE',
                 'password': 'TEXT NOT NULL CHECK (LENGTH(password) >= 4)',
                 'restricted': 'BOOLEAN DEFAULT FALSE',
-                'bio': 'TEXT DEFAULT \'Feeling new? Make a bio!\'',
             },
             # The docker containers a user has
             'user_containers': {
@@ -1025,50 +1024,6 @@ class PostgreSQL:
             if password is None:
                 return None
             return password[0]
-        finally:
-            cur.close()
-            conn.close()
-
-    # TODO: Allow user to access this feature
-    def set_bio(self, username, bio):
-        # Check if the user exists
-        self.check_user_exists(username)
-
-        conn = self.get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                UPDATE accounts
-                SET bio = %s
-                WHERE username = %s;
-                """,
-                (bio, username)
-            )
-            conn.commit()
-        finally:
-            cur.close()
-            conn.close()
-
-    def get_bio(self, username):
-        # Check if the user exists
-        self.check_user_exists(username)
-
-        conn = self.get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute(
-                """
-                SELECT bio
-                FROM accounts
-                WHERE username = %s;
-                """,
-                (username,)
-            )
-            bio = cur.fetchone()
-            if bio is None:
-                return None
-            return bio[0]
         finally:
             cur.close()
             conn.close()
