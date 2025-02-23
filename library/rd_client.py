@@ -399,16 +399,19 @@ def get_rd_ignore():
     return ign_dict
 
 def is_ignored(file_path, ignore_dict):
-    for pattern in ignore_dict['files']:
-        if fnmatch.fnmatch(file_path, pattern):
-            return True
-    for directory in ignore_dict['directories']:
-        if file_path.startswith(directory):
-            return True
-    for mimetype in ignore_dict['mimetypes']:
-        if file_path.endswith(mimetype):
-            return True
-    return False
+    if not len(ignore_dict) == 0:
+        for pattern in ignore_dict['files']:
+            if fnmatch.fnmatch(file_path, pattern):
+                return True
+        for directory in ignore_dict['directories']:
+            if file_path.startswith(directory):
+                return True
+        for mimetype in ignore_dict['mimetypes']:
+            if file_path.endswith(mimetype):
+                return True
+        return False
+    else:
+        return False
 
 rdc = rd_config()
 
@@ -422,9 +425,17 @@ def parse_kwargs():
             kwargs[key] = value
     return kwargs
 
+RDC_CLIENT_VERSION = "1.1.0"  # Remember to keep this updated.
+
+kwargs = parse_kwargs()
+
+try:
+    cmd = args[1].lower()
+except IndexError:
+    sys.exit(1)  # No command passed
+
 if __name__ == "__main__":
-    kwargs = parse_kwargs()
-    print("Raindrop Client v1.0.0")
+    print(f"Raindrop Client v{RDC_CLIENT_VERSION}")
     print(f"{len(sys.argv)} arguments passed. {len(kwargs)} kwargs passed.")
     print("Type 'rdc help' for a list of commands and general help.")
 
@@ -440,13 +451,26 @@ if __name__ == "__main__":
             print("Permission error creating command. Please run this file with elevated permissions.")
             sys.exit(1)
 
-if "init" in args:
-    repo_name = ask("Enter the name of the repository:", lambda x: len(x) > 0)
-    repo_desc = ask("Describe your repository:", lambda x: len(x) > 0)
-    visibility = ask(
-        "Enter the visibility of the repository on raindrop instances (private, public, unlisted):",
-        lambda x: x in ['private', 'public', 'unlisted']
-    )
+if cmd == "init":
+    # Ask for the name if not provided
+    if kwargs.get('name', None) is None:
+        repo_name = ask("Enter the name of the repository:", lambda x: len(x) > 0)
+    else:
+        repo_name = kwargs['name']
+
+    # Ask for the description if not provided
+    if kwargs.get('desc', None) is None and kwargs.get('description', None) is None:
+        repo_desc = ask("Describe your repository:", lambda x: len(x) > 0)
+    else:
+        repo_desc = kwargs.get('desc', kwargs.get('description', None))
+
+    if kwargs.get('visibility', None) is None:
+        visibility = ask(
+            "Enter the visibility of the repository on raindrop instances (private, public, unlisted):",
+            lambda x: x in ['private', 'public', 'unlisted']
+        )
+    else:
+        visibility = kwargs['visibility']
 
     try:
         UUID = rdc.register(
@@ -465,6 +489,9 @@ Raindrop Client (rdc) - Command Line Interface
 
 Usage:
   rdc <command> [options]
+  rdc <command> keyword=value
+  eg, rdc init name=myRepository description="This is my repository"
+  (use quotes for multi-word values)
 
 Commands:
   - init                Initialize a new repository.
@@ -472,16 +499,18 @@ Commands:
   - commit <file>       Commit changes to a file. Use '-a' to commit all files.
     Options:
       --line_range=start-end  Specify a range of lines to commit (e.g., --line_range=10-20).
+      --msg, --message         Specify a commit message.
   
   - help                Show this help message.
+  - version             Show the version of the Raindrop Client.
 
 Examples:
   rdc init
   rdc commit myfile.txt
   rdc commit -a
-  rdc commit myfile.txt --line_range=10-20
+  rdc commit myfile.txt line_range=10-20
 """)
-elif "commit" in args:
+elif cmd == "commit":
     commit_list = []
     try:
         file_to_commit = args[2]
@@ -497,7 +526,8 @@ elif "commit" in args:
         print("Please specify a file to commit by adding it as an argument.")
         sys.exit(1)
 
-    commit_message = ask("Enter a commit message:", lambda x: len(x) > 0)
+    if kwargs.get("msg", None) is None and kwargs.get("message", None) is None:
+        commit_message = ask("Enter a commit message:", lambda x: len(x) > 0)
     rd_ignore = get_rd_ignore()
 
     if len(commit_list) <= 0:
@@ -573,3 +603,10 @@ elif "commit" in args:
                 line_number=i,
                 author=author
             )
+
+        # Update the RDC file with the new version
+        rdc.update('v_major', v_major, rdc_data['name'])
+        rdc.update('v_minor', v_minor, rdc_data['name'])
+        rdc.update('v_patch', v_patch, rdc_data['name'])
+elif cmd in ['v', 'verison', 'ver']:
+    print(RDC_CLIENT_VERSION)
